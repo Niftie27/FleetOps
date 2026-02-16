@@ -2,14 +2,17 @@ import { useState, useMemo } from "react";
 import { vehicles, trips, speedChartData } from "@/data/mockData";
 import { Download, Filter } from "lucide-react";
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Tooltip as ChartTooltip,
+  Filler,
+} from "chart.js";
+import { Line as LineChart } from "react-chartjs-2";
+
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ChartTooltip, Filler);
 
 const TripHistory = () => {
   const [vehicleId, setVehicleId] = useState("all");
@@ -107,37 +110,45 @@ const TripHistory = () => {
         <h3 className="mb-4 text-sm font-medium text-muted-foreground">
           Rychlost v průběhu dne (ukázková data)
         </h3>
-        <ResponsiveContainer width="100%" height={250}>
-          <LineChart data={speedChartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(217,33%,25%)" />
-            <XAxis
-              dataKey="time"
-              stroke="hsl(215,20%,65%)"
-              tick={{ fontSize: 12 }}
-            />
-            <YAxis
-              stroke="hsl(215,20%,65%)"
-              tick={{ fontSize: 12 }}
-              unit=" km/h"
-            />
-            <Tooltip
-              contentStyle={{
-                background: "hsl(217,33%,17%)",
-                border: "1px solid hsl(217,33%,25%)",
-                borderRadius: "0.5rem",
-                color: "hsl(210,40%,98%)",
-              }}
-            />
-            <Line
-              type="monotone"
-              dataKey="speed"
-              stroke="hsl(199,89%,48%)"
-              strokeWidth={2}
-              dot={{ fill: "hsl(199,89%,48%)", r: 3 }}
-              activeDot={{ r: 5 }}
-            />
-          </LineChart>
-        </ResponsiveContainer>
+        <div className="h-72">
+          <LineChart
+            data={{
+              labels: (speedChartData ?? []).map((d) => d.time),
+              datasets: [
+                {
+                  label: "Rychlost (km/h)",
+                  data: (speedChartData ?? []).map((d) => d.speed),
+                  borderColor: "hsl(199,89%,48%)",
+                  backgroundColor: "hsla(199,89%,48%,0.1)",
+                  fill: true,
+                  tension: 0.3,
+                  pointRadius: 3,
+                },
+              ],
+            }}
+            options={{
+              responsive: true,
+              maintainAspectRatio: false,
+              scales: {
+                y: {
+                  ticks: { color: "hsl(215,20%,65%)" },
+                  grid: { color: "hsl(217,33%,25%)" },
+                },
+                x: {
+                  ticks: { color: "hsl(215,20%,65%)" },
+                  grid: { color: "hsl(217,33%,25%)" },
+                },
+              },
+              plugins: {
+                tooltip: {
+                  backgroundColor: "hsl(217,33%,17%)",
+                  borderColor: "hsl(217,33%,25%)",
+                  borderWidth: 1,
+                },
+              },
+            }}
+          />
+        </div>
       </div>
 
       {/* Trips table */}
