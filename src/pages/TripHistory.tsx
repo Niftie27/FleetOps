@@ -5,6 +5,7 @@ import SpeedChart from "@/components/SpeedChart";
 import LoadingState from "@/components/LoadingState";
 import ErrorState from "@/components/ErrorState";
 import EmptyState from "@/components/EmptyState";
+import GeocodedAddress from "@/components/GeocodedAddress";
 
 const TripHistory = () => {
   const [vehicleId, setVehicleId] = useState("all");
@@ -172,9 +173,13 @@ const TripHistory = () => {
                     {new Date(t.startTime).toLocaleString("cs-CZ")}
                   </td>
                   <td className="px-4 py-3">
-                    <span className="text-muted-foreground">{t.startLocation}</span>
-                    <span className="mx-1 text-muted-foreground">→</span>
-                    {t.endLocation}
+                    <div className="text-muted-foreground">
+                      <GeocodedAddress lat={t.startLat} lng={t.startLng} fallback={t.startLocation} />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-muted-foreground">→</span>
+                      <GeocodedAddress lat={t.endLat} lng={t.endLng} fallback={t.endLocation} />
+                    </div>
                   </td>
                   <td className="px-4 py-3">{t.distance} km</td>
                   <td className="hidden px-4 py-3 text-muted-foreground md:table-cell">

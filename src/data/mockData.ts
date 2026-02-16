@@ -23,6 +23,10 @@ export interface Trip {
   endTime: string;
   startLocation: string;
   endLocation: string;
+  startLat: number;
+  startLng: number;
+  endLat: number;
+  endLng: number;
   distance: number;
   duration: number;
   maxSpeed: number;
@@ -54,12 +58,12 @@ export const vehicles: Vehicle[] = [
 ];
 
 export const trips: Trip[] = [
-  { id: "t1", vehicleId: "v1", vehicleName: "Škoda Octavia 1", startTime: "2026-02-16T06:30:00Z", endTime: "2026-02-16T07:45:00Z", startLocation: "Praha 1, Václavské nám.", endLocation: "Praha 4, Budějovická", distance: 12.3, duration: 75, maxSpeed: 72, avgSpeed: 38 },
-  { id: "t2", vehicleId: "v1", vehicleName: "Škoda Octavia 1", startTime: "2026-02-16T08:15:00Z", endTime: "2026-02-16T09:30:00Z", startLocation: "Praha 4, Budějovická", endLocation: "Praha 10, Strašnice", distance: 8.7, duration: 55, maxSpeed: 65, avgSpeed: 42 },
-  { id: "t3", vehicleId: "v2", vehicleName: "VW Transporter", startTime: "2026-02-16T07:00:00Z", endTime: "2026-02-16T08:20:00Z", startLocation: "Praha 6, Dejvice", endLocation: "Praha 3, Žižkov", distance: 15.1, duration: 80, maxSpeed: 58, avgSpeed: 35 },
-  { id: "t4", vehicleId: "v5", vehicleName: "Renault Kangoo", startTime: "2026-02-16T06:00:00Z", endTime: "2026-02-16T07:10:00Z", startLocation: "Praha 5, Smíchov", endLocation: "Praha 8, Karlín", distance: 11.5, duration: 70, maxSpeed: 60, avgSpeed: 40 },
-  { id: "t5", vehicleId: "v7", vehicleName: "Peugeot Partner", startTime: "2026-02-16T08:00:00Z", endTime: "2026-02-16T09:00:00Z", startLocation: "Praha 2, Vinohrady", endLocation: "Praha 9, Vysočany", distance: 9.8, duration: 60, maxSpeed: 55, avgSpeed: 37 },
-  { id: "t6", vehicleId: "v3", vehicleName: "Ford Transit", startTime: "2026-02-15T14:00:00Z", endTime: "2026-02-15T16:30:00Z", startLocation: "Praha 7, Holešovice", endLocation: "Brno, centrum", distance: 205.0, duration: 150, maxSpeed: 130, avgSpeed: 82 },
+  { id: "t1", vehicleId: "v1", vehicleName: "Škoda Octavia 1", startTime: "2026-02-16T06:30:00Z", endTime: "2026-02-16T07:45:00Z", startLocation: "Praha 1, Václavské nám.", endLocation: "Praha 4, Budějovická", startLat: 50.0810, startLng: 14.4280, endLat: 50.0444, endLng: 14.4493, distance: 12.3, duration: 75, maxSpeed: 72, avgSpeed: 38 },
+  { id: "t2", vehicleId: "v1", vehicleName: "Škoda Octavia 1", startTime: "2026-02-16T08:15:00Z", endTime: "2026-02-16T09:30:00Z", startLocation: "Praha 4, Budějovická", endLocation: "Praha 10, Strašnice", startLat: 50.0444, startLng: 14.4493, endLat: 50.0735, endLng: 14.4908, distance: 8.7, duration: 55, maxSpeed: 65, avgSpeed: 42 },
+  { id: "t3", vehicleId: "v2", vehicleName: "VW Transporter", startTime: "2026-02-16T07:00:00Z", endTime: "2026-02-16T08:20:00Z", startLocation: "Praha 6, Dejvice", endLocation: "Praha 3, Žižkov", startLat: 50.1000, startLng: 14.3936, endLat: 50.0833, endLng: 14.4500, distance: 15.1, duration: 80, maxSpeed: 58, avgSpeed: 35 },
+  { id: "t4", vehicleId: "v5", vehicleName: "Renault Kangoo", startTime: "2026-02-16T06:00:00Z", endTime: "2026-02-16T07:10:00Z", startLocation: "Praha 5, Smíchov", endLocation: "Praha 8, Karlín", startLat: 50.0700, startLng: 14.4044, endLat: 50.0905, endLng: 14.4507, distance: 11.5, duration: 70, maxSpeed: 60, avgSpeed: 40 },
+  { id: "t5", vehicleId: "v7", vehicleName: "Peugeot Partner", startTime: "2026-02-16T08:00:00Z", endTime: "2026-02-16T09:00:00Z", startLocation: "Praha 2, Vinohrady", endLocation: "Praha 9, Vysočany", startLat: 50.0755, startLng: 14.4378, endLat: 50.1064, endLng: 14.4965, distance: 9.8, duration: 60, maxSpeed: 55, avgSpeed: 37 },
+  { id: "t6", vehicleId: "v3", vehicleName: "Ford Transit", startTime: "2026-02-15T14:00:00Z", endTime: "2026-02-15T16:30:00Z", startLocation: "Praha 7, Holešovice", endLocation: "Brno, centrum", startLat: 50.1050, startLng: 14.4378, endLat: 49.1951, endLng: 16.6068, distance: 205.0, duration: 150, maxSpeed: 130, avgSpeed: 82 },
 ];
 
 export const events: FleetEvent[] = [
