@@ -9,6 +9,7 @@ import ErrorState from "@/components/ErrorState";
 import EmptyState from "@/components/EmptyState";
 import RefreshCountdown from "@/components/RefreshCountdown";
 import { X, Navigation, Gauge, Fuel, MapPin } from "lucide-react";
+import { useWeather } from "@/hooks/useWeather";
 import "leaflet/dist/leaflet.css";
 
 // Fix default marker icons
@@ -32,6 +33,26 @@ const createIcon = (status: VehicleStatus) =>
     iconSize: [14, 14],
     iconAnchor: [7, 7],
   });
+
+const WeatherPopup = ({ lat, lng, name, plate }: { lat: number; lng: number; name: string; plate: string }) => {
+  const { data, loading } = useWeather(lat, lng);
+  return (
+    <div>
+      <strong>{name}</strong>
+      <br />
+      {plate}
+      <div style={{ marginTop: 6, fontSize: 11, color: "#94a3b8", borderTop: "1px solid #334155", paddingTop: 4 }}>
+        {loading ? (
+          <span>Počasí…</span>
+        ) : data ? (
+          <span>
+            {data.icon} {data.temperature}°C · {data.condition} · 💨 {data.windSpeed} km/h
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+};
 
 const POLL_INTERVAL = 15_000;
 
@@ -126,9 +147,7 @@ const LiveMap = () => {
                   eventHandlers={{ click: () => selectVehicle(v.id) }}
                 >
                   <Popup>
-                    <strong>{v.name}</strong>
-                    <br />
-                    {v.plate}
+                    <WeatherPopup lat={v.lat} lng={v.lng} name={v.name} plate={v.plate} />
                   </Popup>
                 </Marker>
               ))}
