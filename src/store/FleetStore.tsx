@@ -35,6 +35,7 @@ export interface FleetState {
   lastUpdated: string | null;
   selectedVehicleId: string | null;
   statusFilter: "all" | VehicleStatus;
+  searchQuery: string;
   dataSource: "mock" | "live";
 }
 
@@ -48,6 +49,7 @@ const initialState: FleetState = {
   lastUpdated: null,
   selectedVehicleId: null,
   statusFilter: "all",
+  searchQuery: "",
   dataSource: "mock",
 };
 
@@ -61,6 +63,7 @@ type Action =
   | { type: "SET_ERROR"; payload: string | null }
   | { type: "SET_SELECTED_VEHICLE"; payload: string | null }
   | { type: "SET_STATUS_FILTER"; payload: "all" | VehicleStatus }
+  | { type: "SET_SEARCH_QUERY"; payload: string }
   | { type: "SET_DATA_SOURCE"; payload: "mock" | "live" };
 
 function reducer(state: FleetState, action: Action): FleetState {
@@ -81,6 +84,8 @@ function reducer(state: FleetState, action: Action): FleetState {
       return { ...state, selectedVehicleId: action.payload };
     case "SET_STATUS_FILTER":
       return { ...state, statusFilter: action.payload };
+    case "SET_SEARCH_QUERY":
+      return { ...state, searchQuery: action.payload };
     case "SET_DATA_SOURCE":
       return { ...state, dataSource: action.payload };
     default:
@@ -96,6 +101,7 @@ export interface FleetActions {
   fetchSpeedChart: () => Promise<void>;
   selectVehicle: (id: string | null) => void;
   setStatusFilter: (f: "all" | VehicleStatus) => void;
+  setSearchQuery: (q: string) => void;
 }
 
 const FleetStateCtx = createContext<FleetState>(initialState);
@@ -168,6 +174,10 @@ export const FleetProvider = ({ children }: { children: ReactNode }) => {
     dispatch({ type: "SET_STATUS_FILTER", payload: f });
   }, []);
 
+  const setSearchQuery = useCallback((q: string) => {
+    dispatch({ type: "SET_SEARCH_QUERY", payload: q });
+  }, []);
+
   const actions: FleetActions = {
     fetchVehicles,
     fetchTrips,
@@ -175,6 +185,7 @@ export const FleetProvider = ({ children }: { children: ReactNode }) => {
     fetchSpeedChart,
     selectVehicle,
     setStatusFilter,
+    setSearchQuery,
   };
 
   return (

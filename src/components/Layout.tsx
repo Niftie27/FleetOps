@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -10,7 +10,7 @@ import {
   Search,
   Satellite,
 } from "lucide-react";
-import { useFleetState } from "@/store/FleetStore";
+import { useFleetState, useFleetActions } from "@/store/FleetStore";
 import DataSourceBadge from "@/components/DataSourceBadge";
 
 const navItems = [
@@ -26,9 +26,36 @@ interface LayoutProps {
 
 const Layout = ({ children }: LayoutProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [localQuery, setLocalQuery] = useState("");
   const location = useLocation();
-  const { dataSource } = useFleetState();
+  const { dataSource, searchQuery } = useFleetState();
+  const { setSearchQuery } = useFleetActions();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  // Sync local input from store (e.g. on mount)
+  useEffect(() => {
+    setLocalQuery(searchQuery);
+  }, [searchQuery]);
+
+  const applySearch = useCallback(
+    (q: string) => {
+      clearTimeout(debounceRef.current);
+      setSearchQuery(q.trim());
+    },
+    [setSearchQuery]
+  );
+
+  const handleChange = (value: string) => {
+    setLocalQuery(value);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => applySearch(value), 300);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      applySearch(localQuery);
+    }
+  };
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -105,8 +132,9 @@ const Layout = ({ children }: LayoutProps) => {
             <input
               type="text"
               placeholder="Hledat vozidlo, SPZ, řidiče..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={localQuery}
+              onChange={(e) => handleChange(e.target.value)}
+              onKeyDown={handleKeyDown}
               className="w-full rounded-lg border border-border bg-secondary py-2 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
