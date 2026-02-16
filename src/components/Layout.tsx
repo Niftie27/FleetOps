@@ -10,6 +10,8 @@ import {
   Search,
   Satellite,
 } from "lucide-react";
+import { useFleetState } from "@/store/FleetStore";
+import DataSourceBadge from "@/components/DataSourceBadge";
 
 const navItems = [
   { path: "/", label: "Přehled flotily", icon: LayoutDashboard },
@@ -26,6 +28,7 @@ const Layout = ({ children }: LayoutProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const location = useLocation();
+  const { dataSource } = useFleetState();
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -108,9 +111,12 @@ const Layout = ({ children }: LayoutProps) => {
             />
           </div>
 
-          <div className="ml-auto flex items-center gap-2">
-            <div className="h-2 w-2 animate-pulse-dot rounded-full bg-status-moving" />
-            <span className="text-xs text-muted-foreground">Live</span>
+          <div className="ml-auto flex items-center gap-3">
+            <DataSourceBadge source={dataSource} />
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 animate-pulse-dot rounded-full bg-status-moving" />
+              <span className="text-xs text-muted-foreground">Live</span>
+            </div>
           </div>
         </header>
 

@@ -1,7 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
 import { type FleetEvent } from "@/data/mockData";
 import { useFleetState, useFleetActions } from "@/store/FleetStore";
-import { AlertTriangle, AlertCircle, Info, Filter } from "lucide-react";
+import { AlertTriangle, AlertCircle, Info, Filter, Bell } from "lucide-react";
+import LoadingState from "@/components/LoadingState";
+import ErrorState from "@/components/ErrorState";
+import EmptyState from "@/components/EmptyState";
 
 const severityConfig: Record<FleetEvent["severity"], { icon: typeof AlertTriangle; className: string; label: string }> = {
   high: { icon: AlertTriangle, className: "text-destructive", label: "Vysoká" },
@@ -14,15 +17,13 @@ const Events = () => {
   const [dateFrom, setDateFrom] = useState("2026-02-15");
   const [dateTo, setDateTo] = useState("2026-02-16");
 
-  const { vehicles, events } = useFleetState();
+  const { vehicles, events, loading, error } = useFleetState();
   const { fetchVehicles, fetchEvents } = useFleetActions();
 
-  // Initial load
   useEffect(() => {
     fetchVehicles();
   }, [fetchVehicles]);
 
-  // Refetch events when date filters change
   useEffect(() => {
     fetchEvents();
   }, [dateFrom, dateTo, fetchEvents]);
@@ -38,6 +39,15 @@ const Events = () => {
 
   const selectClass =
     "rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring";
+
+  if (error && events.length === 0) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold">Události a upozornění</h1>
+        <ErrorState message={error} onRetry={fetchEvents} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -87,14 +97,14 @@ const Events = () => {
       </div>
 
       {/* Events */}
-      {filtered.length === 0 ? (
-        <div className="flex h-60 flex-col items-center justify-center rounded-xl border border-border bg-card">
-          <AlertCircle className="h-10 w-10 text-muted-foreground mb-3" />
-          <p className="text-lg font-medium">Žádné události</p>
-          <p className="text-sm text-muted-foreground">
-            Pro vybrané filtry nejsou žádné události
-          </p>
-        </div>
+      {loading.events && events.length === 0 ? (
+        <LoadingState message="Načítání událostí…" rows={3} />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={<Bell className="h-10 w-10" />}
+          title="Žádné události"
+          description="Pro vybrané filtry a časové období nejsou k dispozici žádné události. Zkuste rozšířit datumový rozsah nebo vybrat jiné vozidlo."
+        />
       ) : (
         <div className="space-y-3">
           {filtered.map((event) => {

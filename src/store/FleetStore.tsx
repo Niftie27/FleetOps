@@ -4,7 +4,6 @@ import {
   useReducer,
   useCallback,
   type ReactNode,
-  type Dispatch,
 } from "react";
 import {
   type Vehicle,
@@ -17,6 +16,7 @@ import {
   getTripHistory,
   getEvents,
   getSpeedChartData,
+  getDataSource,
 } from "@/services/dozorApi";
 
 // ─── State shape ────────────────────────────────────────
@@ -35,6 +35,7 @@ export interface FleetState {
   lastUpdated: string | null;
   selectedVehicleId: string | null;
   statusFilter: "all" | VehicleStatus;
+  dataSource: "mock" | "live";
 }
 
 const initialState: FleetState = {
@@ -47,6 +48,7 @@ const initialState: FleetState = {
   lastUpdated: null,
   selectedVehicleId: null,
   statusFilter: "all",
+  dataSource: "mock",
 };
 
 // ─── Actions ────────────────────────────────────────────
@@ -58,7 +60,8 @@ type Action =
   | { type: "SET_SPEED_CHART"; payload: { time: string; speed: number }[] }
   | { type: "SET_ERROR"; payload: string | null }
   | { type: "SET_SELECTED_VEHICLE"; payload: string | null }
-  | { type: "SET_STATUS_FILTER"; payload: "all" | VehicleStatus };
+  | { type: "SET_STATUS_FILTER"; payload: "all" | VehicleStatus }
+  | { type: "SET_DATA_SOURCE"; payload: "mock" | "live" };
 
 function reducer(state: FleetState, action: Action): FleetState {
   switch (action.type) {
@@ -78,13 +81,15 @@ function reducer(state: FleetState, action: Action): FleetState {
       return { ...state, selectedVehicleId: action.payload };
     case "SET_STATUS_FILTER":
       return { ...state, statusFilter: action.payload };
+    case "SET_DATA_SOURCE":
+      return { ...state, dataSource: action.payload };
     default:
       return state;
   }
 }
 
 // ─── Context ────────────────────────────────────────────
-interface FleetActions {
+export interface FleetActions {
   fetchVehicles: () => Promise<void>;
   fetchTrips: (code?: string, from?: string, to?: string) => Promise<void>;
   fetchEvents: () => Promise<void>;
@@ -108,6 +113,7 @@ export const FleetProvider = ({ children }: { children: ReactNode }) => {
     try {
       const data = await getVehicles();
       dispatch({ type: "SET_VEHICLES", payload: data });
+      dispatch({ type: "SET_DATA_SOURCE", payload: getDataSource() });
       dispatch({ type: "SET_ERROR", payload: null });
     } catch (e: any) {
       dispatch({ type: "SET_ERROR", payload: e.message ?? "Failed to load vehicles" });
@@ -121,6 +127,7 @@ export const FleetProvider = ({ children }: { children: ReactNode }) => {
     try {
       const data = await getTripHistory(code, from, to);
       dispatch({ type: "SET_TRIPS", payload: data });
+      dispatch({ type: "SET_DATA_SOURCE", payload: getDataSource() });
     } catch (e: any) {
       dispatch({ type: "SET_ERROR", payload: e.message ?? "Failed to load trips" });
     } finally {
@@ -133,6 +140,7 @@ export const FleetProvider = ({ children }: { children: ReactNode }) => {
     try {
       const data = await getEvents();
       dispatch({ type: "SET_EVENTS", payload: data });
+      dispatch({ type: "SET_DATA_SOURCE", payload: getDataSource() });
     } catch (e: any) {
       dispatch({ type: "SET_ERROR", payload: e.message ?? "Failed to load events" });
     } finally {
