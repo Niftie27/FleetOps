@@ -28,7 +28,7 @@ const Layout = ({ children }: LayoutProps) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [localQuery, setLocalQuery] = useState("");
   const location = useLocation();
-  const { dataSource, searchQuery } = useFleetState();
+  const { dataSource, searchQuery, lastUpdated } = useFleetState();
   const { setSearchQuery } = useFleetActions();
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -141,10 +141,11 @@ const Layout = ({ children }: LayoutProps) => {
 
           <div className="ml-auto flex items-center gap-3">
             <DataSourceBadge source={dataSource} />
-            <div className="flex items-center gap-2">
-              <div className="h-2 w-2 animate-pulse-dot rounded-full bg-status-moving" />
-              <span className="text-xs text-muted-foreground">Live</span>
-            </div>
+            {lastUpdated && (
+              <span className="hidden text-xs text-muted-foreground sm:inline">
+                Aktualizace: {new Date(lastUpdated).toLocaleTimeString("cs-CZ")}
+              </span>
+            )}
           </div>
         </header>
 

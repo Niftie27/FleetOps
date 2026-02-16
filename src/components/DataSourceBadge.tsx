@@ -14,12 +14,22 @@ const DataSourceBadge = ({ source }: DataSourceBadgeProps) => {
           : "bg-status-moving/15 text-status-moving"
       }`}
     >
+      <span
+        className={`h-2 w-2 rounded-full ${
+          isMock ? "bg-status-idle" : "bg-status-moving animate-pulse-dot"
+        }`}
+      />
       {isMock ? (
-        <Database className="h-3 w-3" />
+        <>
+          <Database className="h-3 w-3" />
+          Mock data
+        </>
       ) : (
-        <Wifi className="h-3 w-3" />
+        <>
+          <Wifi className="h-3 w-3" />
+          Live API
+        </>
       )}
-      {isMock ? "Mock data" : "Live API"}
     </span>
   );
 };

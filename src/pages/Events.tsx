@@ -103,7 +103,7 @@ const Events = () => {
         <EmptyState
           icon={<Bell className="h-10 w-10" />}
           title="Žádné události"
-          description="Pro vybrané filtry a časové období nejsou k dispozici žádné události. Zkuste rozšířit datumový rozsah nebo vybrat jiné vozidlo."
+          description={`Pro období ${dateFrom} – ${dateTo}${vehicleId !== "all" ? ` a vybrané vozidlo` : ""} nejsou k dispozici žádné události. Zkuste rozšířit datumový rozsah.`}
         />
       ) : (
         <div className="space-y-3">

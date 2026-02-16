@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Car, Activity, PauseCircle, WifiOff, Fuel } from "lucide-react";
+import { Car, Activity, PauseCircle, WifiOff, Fuel, SearchX } from "lucide-react";
 import { type VehicleStatus } from "@/data/mockData";
 import { useFleetState, useFleetActions } from "@/store/FleetStore";
 import { usePolling } from "@/hooks/usePolling";
@@ -134,9 +134,12 @@ const Index = () => {
       {/* Vehicle table */}
       {filtered.length === 0 ? (
         <EmptyState
-          title="Žádná vozidla"
+          icon={searchQuery ? <SearchX className="h-10 w-10" /> : undefined}
+          title={searchQuery ? "Žádné vozidlo neodpovídá vyhledávání" : "Žádná vozidla"}
           description={
-            statusFilter === "all"
+            searchQuery
+              ? `Pro „${searchQuery}" nebyly nalezeny žádné výsledky. Zkuste upravit hledaný výraz.`
+              : statusFilter === "all"
               ? "Ve flotile nejsou žádná registrovaná vozidla."
               : `Žádná vozidla ve stavu „${filters.find((f) => f.key === statusFilter)?.label ?? statusFilter}".`
           }
