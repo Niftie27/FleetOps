@@ -10,11 +10,12 @@ import {
 
 const FUNCTION_NAME = "dozor-proxy";
 
-async function proxyGet<T>(path: string, params?: Record<string, string>): Promise<T> {
-  const qs = params
-    ? "?" + new URLSearchParams(params).toString()
-    : "";
+/** Tracks whether last fetch used live API or mock fallback */
+let _lastDataSource: "mock" | "live" = "mock";
+export const getDataSource = () => _lastDataSource;
 
+async function proxyGet<T>(path: string, params?: Record<string, string>): Promise<T> {
+  const qs = params ? "?" + new URLSearchParams(params).toString() : "";
   const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${FUNCTION_NAME}${path}${qs}`;
 
   const res = await fetch(url, {
@@ -33,18 +34,17 @@ async function proxyGet<T>(path: string, params?: Record<string, string>): Promi
   return res.json();
 }
 
-export const isConfigured = () => {
-  // With edge functions the credentials are server-side,
-  // so the proxy is always "configured" when Cloud is enabled
-  return Boolean(import.meta.env.VITE_SUPABASE_URL);
-};
+export const isConfigured = () => Boolean(import.meta.env.VITE_SUPABASE_URL);
 
 // ─── Groups ─────────────────────────────────────────────
 export const getGroups = async () => {
   try {
-    return await proxyGet<any[]>("/groups");
+    const data = await proxyGet<any[]>("/groups");
+    _lastDataSource = "live";
+    return data;
   } catch (e) {
     console.warn("getGroups failed, falling back to mock:", e);
+    _lastDataSource = "mock";
     return [];
   }
 };
@@ -52,19 +52,21 @@ export const getGroups = async () => {
 // ─── Vehicles ───────────────────────────────────────────
 export const getVehicles = async (group?: string): Promise<Vehicle[]> => {
   if (!group) {
-    // Without a group code we fall back to mock data for now
+    _lastDataSource = "mock";
     return mockVehicles;
   }
   try {
     const raw = await proxyGet<any[]>("/vehicles", { group });
+    _lastDataSource = "live";
     return raw.map(normalizeVehicle);
   } catch (e) {
     console.warn("getVehicles failed, falling back to mock:", e);
+    _lastDataSource = "mock";
     return mockVehicles;
   }
 };
 
-// ─── Live positions (uses vehicle list) ─────────────────
+// ─── Live positions ─────────────────────────────────────
 export const getLivePositions = async () => {
   const vehicles = await getVehicles();
   return vehicles.map((v) => ({
@@ -83,26 +85,33 @@ export const getTripHistory = async (
   from?: string,
   to?: string
 ): Promise<Trip[]> => {
-  if (!code) return mockTrips;
+  if (!code) {
+    _lastDataSource = "mock";
+    return mockTrips;
+  }
   try {
     const params: Record<string, string> = { code };
     if (from) params.from = from;
     if (to) params.to = to;
     const raw = await proxyGet<any[]>("/trips", params);
+    _lastDataSource = "live";
     return raw.map(normalizeTrip);
   } catch (e) {
     console.warn("getTripHistory failed, falling back to mock:", e);
+    _lastDataSource = "mock";
     return mockTrips;
   }
 };
 
-// ─── Events (kept as mock — API doesn't have an events endpoint) ─
+// ─── Events ─────────────────────────────────────────────
 export const getEvents = async (): Promise<FleetEvent[]> => {
+  _lastDataSource = "mock";
   return mockEvents;
 };
 
-// ─── Speed chart (mock) ─────────────────────────────────
+// ─── Speed chart ────────────────────────────────────────
 export const getSpeedChartData = async () => {
+  _lastDataSource = "mock";
   return mockSpeedChart;
 };
 

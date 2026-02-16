@@ -1,22 +1,24 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useFleetState, useFleetActions } from "@/store/FleetStore";
-import { Download, Filter } from "lucide-react";
+import { Download, Filter, Clock } from "lucide-react";
+import SpeedChart from "@/components/SpeedChart";
+import LoadingState from "@/components/LoadingState";
+import ErrorState from "@/components/ErrorState";
+import EmptyState from "@/components/EmptyState";
 
 const TripHistory = () => {
   const [vehicleId, setVehicleId] = useState("all");
   const [dateFrom, setDateFrom] = useState("2026-02-15");
   const [dateTo, setDateTo] = useState("2026-02-16");
 
-  const { vehicles, trips, speedChart } = useFleetState();
+  const { vehicles, trips, speedChart, loading, error } = useFleetState();
   const { fetchVehicles, fetchTrips, fetchSpeedChart } = useFleetActions();
 
-  // Initial load
   useEffect(() => {
     fetchVehicles();
     fetchSpeedChart();
   }, [fetchVehicles, fetchSpeedChart]);
 
-  // Refetch trips when filters change
   useEffect(() => {
     const code = vehicleId === "all" ? undefined : vehicleId;
     fetchTrips(code, dateFrom, dateTo);
@@ -50,7 +52,15 @@ const TripHistory = () => {
 
   const selectClass =
     "rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring";
-  const inputClass = selectClass;
+
+  if (error && trips.length === 0) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold">Historie jízd</h1>
+        <ErrorState message={error} onRetry={() => fetchTrips(undefined, dateFrom, dateTo)} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -63,7 +73,8 @@ const TripHistory = () => {
         </div>
         <button
           onClick={exportCSV}
-          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          disabled={filtered.length === 0}
+          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Download className="h-4 w-4" />
           Export CSV
@@ -94,7 +105,7 @@ const TripHistory = () => {
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className={inputClass}
+            className={selectClass}
           />
         </div>
         <div>
@@ -103,7 +114,7 @@ const TripHistory = () => {
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className={inputClass}
+            className={selectClass}
           />
         </div>
       </div>
@@ -111,51 +122,32 @@ const TripHistory = () => {
       {/* Speed chart */}
       <div className="rounded-xl border border-border bg-card p-5">
         <h3 className="mb-4 text-sm font-medium text-muted-foreground">
-          Rychlost v průběhu dne (ukázková data)
+          Rychlost v průběhu dne
         </h3>
         <div className="h-72">
-          <svg viewBox="0 0 500 200" className="h-full w-full" preserveAspectRatio="none">
-            {[0, 50, 100, 150].map((y) => (
-              <line key={y} x1="0" y1={y} x2="500" y2={y} stroke="hsl(217,33%,25%)" strokeWidth="0.5" />
-            ))}
-            <polygon
-              points={(() => {
-                const pts = speedChart ?? [];
-                const maxS = Math.max(...pts.map(d => d.speed), 1);
-                const coords = pts.map((d, i) => `${(i / Math.max(pts.length - 1, 1)) * 500},${200 - (d.speed / maxS) * 180}`).join(" ");
-                return `0,200 ${coords} 500,200`;
-              })()}
-              fill="hsla(199,89%,48%,0.1)"
-            />
-            <polyline
-              fill="none"
-              stroke="hsl(199,89%,48%)"
-              strokeWidth="2"
-              points={(speedChart ?? []).map((d, i, arr) => {
-                const maxS = Math.max(...arr.map(a => a.speed), 1);
-                return `${(i / Math.max(arr.length - 1, 1)) * 500},${200 - (d.speed / maxS) * 180}`;
-              }).join(" ")}
-            />
-            {(speedChart ?? []).map((d, i, arr) => {
-              const maxS = Math.max(...arr.map(a => a.speed), 1);
-              return (
-                <circle key={i} cx={(i / Math.max(arr.length - 1, 1)) * 500} cy={200 - (d.speed / maxS) * 180} r="4" fill="hsl(199,89%,48%)" />
-              );
-            })}
-          </svg>
-          <div className="mt-2 flex justify-between text-xs text-muted-foreground">
-            {(speedChart ?? []).map((d, i) => (
-              <span key={i}>{d.time}</span>
-            ))}
-          </div>
+          {loading.speedChart ? (
+            <div className="flex h-full items-center justify-center">
+              <LoadingState message="Načítání grafu…" rows={0} />
+            </div>
+          ) : speedChart.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              Žádná data pro vybrané období
+            </div>
+          ) : (
+            <SpeedChart data={speedChart} />
+          )}
         </div>
       </div>
 
       {/* Trips table */}
-      {filtered.length === 0 ? (
-        <div className="flex h-40 items-center justify-center rounded-xl border border-border bg-card text-muted-foreground">
-          Žádné jízdy pro vybrané filtry
-        </div>
+      {loading.trips && trips.length === 0 ? (
+        <LoadingState message="Načítání jízd…" rows={3} />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon={<Clock className="h-10 w-10" />}
+          title="Žádné jízdy"
+          description="Pro vybrané filtry a časové období nejsou k dispozici žádné jízdy. Zkuste rozšířit datum nebo vybrat jiné vozidlo."
+        />
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border bg-card">
           <table className="w-full text-sm">
