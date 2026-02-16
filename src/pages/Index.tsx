@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Car, Activity, PauseCircle, WifiOff, Fuel } from "lucide-react";
-import { vehicles, type VehicleStatus } from "@/data/mockData";
+import { type Vehicle, type VehicleStatus } from "@/data/mockData";
+import { getVehicles } from "@/services/dozorApi";
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 
@@ -9,6 +10,11 @@ type Filter = "all" | VehicleStatus;
 
 const Index = () => {
   const [filter, setFilter] = useState<Filter>("all");
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+
+  useEffect(() => {
+    getVehicles().then(setVehicles);
+  }, []);
 
   const counts = {
     total: vehicles.length,
