@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react";
-import { vehicles, trips, speedChartData } from "@/data/mockData";
+import { useState, useEffect, useMemo } from "react";
+import { type Vehicle, type Trip } from "@/data/mockData";
+import { getVehicles, getTripHistory, getSpeedChartData } from "@/services/dozorApi";
 import { Download, Filter } from "lucide-react";
 import {
   Chart as ChartJS,
@@ -18,6 +19,15 @@ const TripHistory = () => {
   const [vehicleId, setVehicleId] = useState("all");
   const [dateFrom, setDateFrom] = useState("2026-02-15");
   const [dateTo, setDateTo] = useState("2026-02-16");
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [trips, setTrips] = useState<Trip[]>([]);
+  const [speedChartData, setSpeedChartData] = useState<{ time: string; speed: number }[]>([]);
+
+  useEffect(() => {
+    getVehicles().then(setVehicles);
+    getTripHistory().then(setTrips);
+    getSpeedChartData().then(setSpeedChartData);
+  }, []);
 
   const filtered = useMemo(() => {
     return trips.filter((t) => {

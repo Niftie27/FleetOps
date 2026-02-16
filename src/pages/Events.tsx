@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react";
-import { vehicles, events, type FleetEvent } from "@/data/mockData";
+import { useState, useEffect, useMemo } from "react";
+import { type Vehicle, type FleetEvent } from "@/data/mockData";
+import { getVehicles, getEvents as fetchEvents } from "@/services/dozorApi";
 import { AlertTriangle, AlertCircle, Info, Filter } from "lucide-react";
 
 const severityConfig: Record<FleetEvent["severity"], { icon: typeof AlertTriangle; className: string; label: string }> = {
@@ -12,6 +13,13 @@ const Events = () => {
   const [vehicleId, setVehicleId] = useState("all");
   const [dateFrom, setDateFrom] = useState("2026-02-15");
   const [dateTo, setDateTo] = useState("2026-02-16");
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [events, setEvents] = useState<FleetEvent[]>([]);
+
+  useEffect(() => {
+    getVehicles().then(setVehicles);
+    fetchEvents().then(setEvents);
+  }, []);
 
   const filtered = useMemo(() => {
     return events.filter((e) => {

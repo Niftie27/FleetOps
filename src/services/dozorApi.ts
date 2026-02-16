@@ -1,4 +1,4 @@
-import { vehicles } from "@/data/mockData";
+import { vehicles, trips, events, speedChartData, type Vehicle, type Trip, type FleetEvent } from "@/data/mockData";
 
 export const isConfigured = () => {
   return Boolean(
@@ -7,7 +7,7 @@ export const isConfigured = () => {
   );
 };
 
-export const getVehicles = async () => {
+export const getVehicles = async (): Promise<Vehicle[]> => {
   return vehicles;
 };
 
@@ -22,10 +22,14 @@ export const getLivePositions = async () => {
   }));
 };
 
-export const getTripHistory = async () => {
-  return [];
+export const getTripHistory = async (): Promise<Trip[]> => {
+  return trips;
 };
 
-export const getEvents = async () => {
-  return [];
+export const getEvents = async (): Promise<FleetEvent[]> => {
+  return events;
+};
+
+export const getSpeedChartData = async () => {
+  return speedChartData;
 };

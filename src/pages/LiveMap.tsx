@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
-import { vehicles, type Vehicle } from "@/data/mockData";
+import { type Vehicle } from "@/data/mockData";
+import { getVehicles } from "@/services/dozorApi";
 import StatusBadge from "@/components/StatusBadge";
 import { X, Navigation, Gauge, Fuel } from "lucide-react";
 import "leaflet/dist/leaflet.css";
@@ -30,11 +31,14 @@ const createIcon = (status: Vehicle["status"]) =>
 
 const LiveMap = () => {
   const [selected, setSelected] = useState<Vehicle | null>(null);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 800);
-    return () => clearTimeout(timer);
+    getVehicles().then((data) => {
+      setVehicles(data);
+      setIsLoading(false);
+    });
   }, []);
 
   if (isLoading) {
