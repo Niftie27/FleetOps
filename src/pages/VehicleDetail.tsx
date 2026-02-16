@@ -1,10 +1,19 @@
+import { useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { vehicles, trips } from "@/data/mockData";
+import { useFleetState, useFleetActions } from "@/store/FleetStore";
 import StatusBadge from "@/components/StatusBadge";
 import { ArrowLeft, Navigation, Gauge, Fuel, Clock, Key, MapPin } from "lucide-react";
 
 const VehicleDetail = () => {
   const { id } = useParams<{ id: string }>();
+  const { vehicles, trips } = useFleetState();
+  const { fetchVehicles, fetchTrips } = useFleetActions();
+
+  useEffect(() => {
+    if (vehicles.length === 0) fetchVehicles();
+    if (trips.length === 0) fetchTrips();
+  }, [vehicles.length, trips.length, fetchVehicles, fetchTrips]);
+
   const vehicle = vehicles.find((v) => v.id === id);
 
   if (!vehicle) {

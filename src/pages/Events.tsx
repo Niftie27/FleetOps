@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { type Vehicle, type FleetEvent } from "@/data/mockData";
-import { getVehicles, getEvents as fetchEvents } from "@/services/dozorApi";
+import { type FleetEvent } from "@/data/mockData";
+import { useFleetState, useFleetActions } from "@/store/FleetStore";
 import { AlertTriangle, AlertCircle, Info, Filter } from "lucide-react";
 
 const severityConfig: Record<FleetEvent["severity"], { icon: typeof AlertTriangle; className: string; label: string }> = {
@@ -13,13 +13,19 @@ const Events = () => {
   const [vehicleId, setVehicleId] = useState("all");
   const [dateFrom, setDateFrom] = useState("2026-02-15");
   const [dateTo, setDateTo] = useState("2026-02-16");
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [events, setEvents] = useState<FleetEvent[]>([]);
 
+  const { vehicles, events } = useFleetState();
+  const { fetchVehicles, fetchEvents } = useFleetActions();
+
+  // Initial load
   useEffect(() => {
-    getVehicles().then(setVehicles);
-    fetchEvents().then(setEvents);
-  }, []);
+    fetchVehicles();
+  }, [fetchVehicles]);
+
+  // Refetch events when date filters change
+  useEffect(() => {
+    fetchEvents();
+  }, [dateFrom, dateTo, fetchEvents]);
 
   const filtered = useMemo(() => {
     return events.filter((e) => {
@@ -28,7 +34,7 @@ const Events = () => {
       if (d < dateFrom || d > dateTo) return false;
       return true;
     });
-  }, [vehicleId, dateFrom, dateTo]);
+  }, [events, vehicleId, dateFrom, dateTo]);
 
   const selectClass =
     "rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring";
