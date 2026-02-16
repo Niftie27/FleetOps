@@ -15,7 +15,7 @@ type Filter = "all" | VehicleStatus;
 const POLL_INTERVAL = 30_000;
 
 const Index = () => {
-  const { vehicles, statusFilter, loading, error, lastUpdated } = useFleetState();
+  const { vehicles, statusFilter, searchQuery, loading, error, lastUpdated } = useFleetState();
   const { fetchVehicles, setStatusFilter } = useFleetActions();
 
   usePolling(fetchVehicles, POLL_INTERVAL);
@@ -51,8 +51,18 @@ const Index = () => {
     offline: vehicles.filter((v) => v.status === "offline").length,
   };
 
-  const filtered =
+  const afterStatus =
     statusFilter === "all" ? vehicles : vehicles.filter((v) => v.status === statusFilter);
+
+  const q = searchQuery.toLowerCase();
+  const filtered = q
+    ? afterStatus.filter(
+        (v) =>
+          v.name.toLowerCase().includes(q) ||
+          v.plate.toLowerCase().includes(q) ||
+          v.driver.toLowerCase().includes(q)
+      )
+    : afterStatus;
 
   const filters: { key: Filter; label: string }[] = [
     { key: "all", label: `Vše (${counts.total})` },
