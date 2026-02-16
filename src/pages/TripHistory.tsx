@@ -147,7 +147,7 @@ const TripHistory = () => {
         <EmptyState
           icon={<Clock className="h-10 w-10" />}
           title="Žádné jízdy"
-          description="Pro vybrané filtry a časové období nejsou k dispozici žádné jízdy. Zkuste rozšířit datum nebo vybrat jiné vozidlo."
+          description={`Pro období ${dateFrom} – ${dateTo}${vehicleId !== "all" ? ` a vybrané vozidlo` : ""} nejsou k dispozici žádné jízdy. Zkuste rozšířit datum nebo vybrat jiné vozidlo.`}
         />
       ) : (
         <div className="overflow-x-auto rounded-xl border border-border bg-card">
