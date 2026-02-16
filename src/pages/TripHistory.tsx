@@ -2,18 +2,6 @@ import { useState, useEffect, useMemo } from "react";
 import { type Vehicle, type Trip } from "@/data/mockData";
 import { getVehicles, getTripHistory, getSpeedChartData } from "@/services/dozorApi";
 import { Download, Filter } from "lucide-react";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Tooltip as ChartTooltip,
-  Filler,
-} from "chart.js";
-import { Line as LineChart } from "react-chartjs-2";
-
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, ChartTooltip, Filler);
 
 const TripHistory = () => {
   const [vehicleId, setVehicleId] = useState("all");
@@ -121,43 +109,44 @@ const TripHistory = () => {
           Rychlost v průběhu dne (ukázková data)
         </h3>
         <div className="h-72">
-          <LineChart
-            data={{
-              labels: (speedChartData ?? []).map((d) => d.time),
-              datasets: [
-                {
-                  label: "Rychlost (km/h)",
-                  data: (speedChartData ?? []).map((d) => d.speed),
-                  borderColor: "hsl(199,89%,48%)",
-                  backgroundColor: "hsla(199,89%,48%,0.1)",
-                  fill: true,
-                  tension: 0.3,
-                  pointRadius: 3,
-                },
-              ],
-            }}
-            options={{
-              responsive: true,
-              maintainAspectRatio: false,
-              scales: {
-                y: {
-                  ticks: { color: "hsl(215,20%,65%)" },
-                  grid: { color: "hsl(217,33%,25%)" },
-                },
-                x: {
-                  ticks: { color: "hsl(215,20%,65%)" },
-                  grid: { color: "hsl(217,33%,25%)" },
-                },
-              },
-              plugins: {
-                tooltip: {
-                  backgroundColor: "hsl(217,33%,17%)",
-                  borderColor: "hsl(217,33%,25%)",
-                  borderWidth: 1,
-                },
-              },
-            }}
-          />
+        <svg viewBox="0 0 500 200" className="h-full w-full" preserveAspectRatio="none">
+            {/* Grid lines */}
+            {[0, 50, 100, 150].map((y) => (
+              <line key={y} x1="0" y1={y} x2="500" y2={y} stroke="hsl(217,33%,25%)" strokeWidth="0.5" />
+            ))}
+            {/* Area fill */}
+            <polygon
+              points={(() => {
+                const pts = (speedChartData ?? []);
+                const maxS = Math.max(...pts.map(d => d.speed), 1);
+                const coords = pts.map((d, i) => `${(i / Math.max(pts.length - 1, 1)) * 500},${200 - (d.speed / maxS) * 180}`).join(" ");
+                return `0,200 ${coords} 500,200`;
+              })()}
+              fill="hsla(199,89%,48%,0.1)"
+            />
+            {/* Line */}
+            <polyline
+              fill="none"
+              stroke="hsl(199,89%,48%)"
+              strokeWidth="2"
+              points={(speedChartData ?? []).map((d, i, arr) => {
+                const maxS = Math.max(...arr.map(a => a.speed), 1);
+                return `${(i / Math.max(arr.length - 1, 1)) * 500},${200 - (d.speed / maxS) * 180}`;
+              }).join(" ")}
+            />
+            {/* Dots */}
+            {(speedChartData ?? []).map((d, i, arr) => {
+              const maxS = Math.max(...arr.map(a => a.speed), 1);
+              return (
+                <circle key={i} cx={(i / Math.max(arr.length - 1, 1)) * 500} cy={200 - (d.speed / maxS) * 180} r="4" fill="hsl(199,89%,48%)" />
+              );
+            })}
+          </svg>
+          <div className="mt-2 flex justify-between text-xs text-muted-foreground">
+            {(speedChartData ?? []).map((d, i) => (
+              <span key={i}>{d.time}</span>
+            ))}
+          </div>
         </div>
       </div>
 
