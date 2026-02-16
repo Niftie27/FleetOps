@@ -85,8 +85,13 @@ export const getTripHistory = async (
   from?: string,
   to?: string
 ): Promise<Trip[]> => {
+  // Without a specific vehicle code, return mock data directly
   if (!code) {
     _lastDataSource = "mock";
+    return mockTrips;
+  }
+  // Skip proxy if previous calls already failed (TLS issue)
+  if (_lastDataSource === "mock") {
     return mockTrips;
   }
   try {
