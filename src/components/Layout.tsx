@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useFleetState, useFleetActions } from "@/store/FleetStore";
 import DataSourceBadge from "@/components/DataSourceBadge";
+import FleetWeather from "@/components/FleetWeather";
 
 const navItems = [
   { path: "/", label: "Přehled flotily", icon: LayoutDashboard },
@@ -140,6 +141,7 @@ const Layout = ({ children }: LayoutProps) => {
           </div>
 
           <div className="ml-auto flex items-center gap-3">
+            <FleetWeather />
             <DataSourceBadge source={dataSource} />
             {lastUpdated && (
               <span className="hidden text-xs text-muted-foreground sm:inline">
