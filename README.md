@@ -50,6 +50,22 @@ npm run dev
 - Click on "New codespace" to launch a new Codespace environment.
 - Edit files directly within the Codespace and commit and push your changes once you're done.
 
+## GPS Dozor API Integration
+
+This project integrates with the GPS Dozor (gpsdozor.cz) tracking API. **All API credentials are stored server-side only** — the frontend never contains usernames, passwords, or API tokens.
+
+The backend proxy runs as a Lovable Cloud edge function (`dozor-proxy`) that forwards requests to the GPS Dozor API with Basic Auth credentials stored as secrets.
+
+### Endpoints proxied
+
+| Frontend call | Proxied to |
+|---|---|
+| `/groups` | `/api/v1/groups` |
+| `/vehicles?group=CODE` | `/api/v1/vehicles/group/{CODE}` |
+| `/vehicle/:code` | `/api/v1/vehicle/{code}` |
+| `/history?codes=A,B&from=...&to=...` | `/api/v1/vehicles/history/{codes}?from=...&to=...` |
+| `/trips?code=...&from=...&to=...` | `/api/v1/vehicle/{code}/trips?from=...&to=...` |
+
 ## What technologies are used for this project?
 
 This project is built with:
