@@ -28,12 +28,12 @@ const FleetWeather = () => {
   if (!data) return null;
 
   return (
-    <span className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:inline-flex">
-      <span>{data.icon}</span>
-      <span>{data.temperature}°C</span>
-      <span className="text-muted-foreground/60">·</span>
+    <span className="hidden items-center gap-2 rounded-lg bg-secondary/80 px-3 py-2 text-sm text-muted-foreground sm:inline-flex">
+      <span className="text-base">{data.icon}</span>
+      <span className="text-sm font-bold text-foreground">{data.temperature}°C</span>
+      <span className="text-muted-foreground/50">·</span>
       <span>{data.condition}</span>
-      <span className="text-muted-foreground/60">·</span>
+      <span className="text-muted-foreground/50">·</span>
       <span>💨 {data.windSpeed} km/h</span>
     </span>
   );
