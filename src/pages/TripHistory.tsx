@@ -1,21 +1,26 @@
-import { useState, useEffect, useMemo } from "react";
-import { type Vehicle, type Trip } from "@/data/mockData";
-import { getVehicles, getTripHistory, getSpeedChartData } from "@/services/dozorApi";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useFleetState, useFleetActions } from "@/store/FleetStore";
 import { Download, Filter } from "lucide-react";
 
 const TripHistory = () => {
   const [vehicleId, setVehicleId] = useState("all");
   const [dateFrom, setDateFrom] = useState("2026-02-15");
   const [dateTo, setDateTo] = useState("2026-02-16");
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [trips, setTrips] = useState<Trip[]>([]);
-  const [speedChartData, setSpeedChartData] = useState<{ time: string; speed: number }[]>([]);
 
+  const { vehicles, trips, speedChart } = useFleetState();
+  const { fetchVehicles, fetchTrips, fetchSpeedChart } = useFleetActions();
+
+  // Initial load
   useEffect(() => {
-    getVehicles().then(setVehicles);
-    getTripHistory().then(setTrips);
-    getSpeedChartData().then(setSpeedChartData);
-  }, []);
+    fetchVehicles();
+    fetchSpeedChart();
+  }, [fetchVehicles, fetchSpeedChart]);
+
+  // Refetch trips when filters change
+  useEffect(() => {
+    const code = vehicleId === "all" ? undefined : vehicleId;
+    fetchTrips(code, dateFrom, dateTo);
+  }, [vehicleId, dateFrom, dateTo, fetchTrips]);
 
   const filtered = useMemo(() => {
     return trips.filter((t) => {
@@ -24,7 +29,7 @@ const TripHistory = () => {
       if (d < dateFrom || d > dateTo) return false;
       return true;
     });
-  }, [vehicleId, dateFrom, dateTo]);
+  }, [trips, vehicleId, dateFrom, dateTo]);
 
   const exportCSV = () => {
     const header = "Vozidlo,Začátek,Konec,Odkud,Kam,Vzdálenost (km),Prům. rychlost,Max rychlost\n";
@@ -109,33 +114,29 @@ const TripHistory = () => {
           Rychlost v průběhu dne (ukázková data)
         </h3>
         <div className="h-72">
-        <svg viewBox="0 0 500 200" className="h-full w-full" preserveAspectRatio="none">
-            {/* Grid lines */}
+          <svg viewBox="0 0 500 200" className="h-full w-full" preserveAspectRatio="none">
             {[0, 50, 100, 150].map((y) => (
               <line key={y} x1="0" y1={y} x2="500" y2={y} stroke="hsl(217,33%,25%)" strokeWidth="0.5" />
             ))}
-            {/* Area fill */}
             <polygon
               points={(() => {
-                const pts = (speedChartData ?? []);
+                const pts = speedChart ?? [];
                 const maxS = Math.max(...pts.map(d => d.speed), 1);
                 const coords = pts.map((d, i) => `${(i / Math.max(pts.length - 1, 1)) * 500},${200 - (d.speed / maxS) * 180}`).join(" ");
                 return `0,200 ${coords} 500,200`;
               })()}
               fill="hsla(199,89%,48%,0.1)"
             />
-            {/* Line */}
             <polyline
               fill="none"
               stroke="hsl(199,89%,48%)"
               strokeWidth="2"
-              points={(speedChartData ?? []).map((d, i, arr) => {
+              points={(speedChart ?? []).map((d, i, arr) => {
                 const maxS = Math.max(...arr.map(a => a.speed), 1);
                 return `${(i / Math.max(arr.length - 1, 1)) * 500},${200 - (d.speed / maxS) * 180}`;
               }).join(" ")}
             />
-            {/* Dots */}
-            {(speedChartData ?? []).map((d, i, arr) => {
+            {(speedChart ?? []).map((d, i, arr) => {
               const maxS = Math.max(...arr.map(a => a.speed), 1);
               return (
                 <circle key={i} cx={(i / Math.max(arr.length - 1, 1)) * 500} cy={200 - (d.speed / maxS) * 180} r="4" fill="hsl(199,89%,48%)" />
@@ -143,7 +144,7 @@ const TripHistory = () => {
             })}
           </svg>
           <div className="mt-2 flex justify-between text-xs text-muted-foreground">
-            {(speedChartData ?? []).map((d, i) => (
+            {(speedChart ?? []).map((d, i) => (
               <span key={i}>{d.time}</span>
             ))}
           </div>

@@ -1,20 +1,19 @@
-import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Car, Activity, PauseCircle, WifiOff, Fuel } from "lucide-react";
-import { type Vehicle, type VehicleStatus } from "@/data/mockData";
-import { getVehicles } from "@/services/dozorApi";
+import { type VehicleStatus } from "@/data/mockData";
+import { useFleetState, useFleetActions } from "@/store/FleetStore";
+import { usePolling } from "@/hooks/usePolling";
 import KPICard from "@/components/KPICard";
 import StatusBadge from "@/components/StatusBadge";
 
 type Filter = "all" | VehicleStatus;
 
 const Index = () => {
-  const [filter, setFilter] = useState<Filter>("all");
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const { vehicles, statusFilter } = useFleetState();
+  const { fetchVehicles, setStatusFilter } = useFleetActions();
 
-  useEffect(() => {
-    getVehicles().then(setVehicles);
-  }, []);
+  // Poll every 30 s
+  usePolling(fetchVehicles, 30_000);
 
   const counts = {
     total: vehicles.length,
@@ -24,7 +23,7 @@ const Index = () => {
   };
 
   const filtered =
-    filter === "all" ? vehicles : vehicles.filter((v) => v.status === filter);
+    statusFilter === "all" ? vehicles : vehicles.filter((v) => v.status === statusFilter);
 
   const filters: { key: Filter; label: string }[] = [
     { key: "all", label: `Vše (${counts.total})` },
@@ -74,9 +73,9 @@ const Index = () => {
         {filters.map((f) => (
           <button
             key={f.key}
-            onClick={() => setFilter(f.key)}
+            onClick={() => setStatusFilter(f.key)}
             className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-              filter === f.key
+              statusFilter === f.key
                 ? "bg-primary text-primary-foreground"
                 : "bg-secondary text-muted-foreground hover:text-foreground"
             }`}

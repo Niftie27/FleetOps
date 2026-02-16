@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useCallback } from "react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
-import { type Vehicle } from "@/data/mockData";
-import { getVehicles } from "@/services/dozorApi";
+import { type Vehicle, type VehicleStatus } from "@/data/mockData";
+import { useFleetState, useFleetActions } from "@/store/FleetStore";
+import { usePolling } from "@/hooks/usePolling";
 import StatusBadge from "@/components/StatusBadge";
 import { X, Navigation, Gauge, Fuel } from "lucide-react";
 import "leaflet/dist/leaflet.css";
@@ -15,7 +16,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
 });
 
-const statusColors = {
+const statusColors: Record<VehicleStatus, string> = {
   moving: "#22c55e",
   idle: "#eab308",
   offline: "#737373",
@@ -30,18 +31,25 @@ const createIcon = (status: Vehicle["status"]) =>
   });
 
 const LiveMap = () => {
-  const [selected, setSelected] = useState<Vehicle | null>(null);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { vehicles, selectedVehicleId, statusFilter, loading } = useFleetState();
+  const { fetchVehicles, selectVehicle, setStatusFilter } = useFleetActions();
 
-  useEffect(() => {
-    getVehicles().then((data) => {
-      setVehicles(data);
-      setIsLoading(false);
-    });
-  }, []);
+  // Poll every 15 s
+  usePolling(fetchVehicles, 15_000);
 
-  if (isLoading) {
+  const selected = vehicles.find((v) => v.id === selectedVehicleId) ?? null;
+
+  const displayedVehicles =
+    statusFilter === "all" ? vehicles : vehicles.filter((v) => v.status === statusFilter);
+
+  const filterOptions: { key: "all" | VehicleStatus; label: string }[] = [
+    { key: "all", label: "Vše" },
+    { key: "moving", label: "V pohybu" },
+    { key: "idle", label: "Nečinné" },
+    { key: "offline", label: "Offline" },
+  ];
+
+  if (loading.vehicles && vehicles.length === 0) {
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-bold">Živá mapa</h1>
@@ -52,11 +60,28 @@ const LiveMap = () => {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Živá mapa</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Živá mapa</h1>
+        <div className="flex gap-1">
+          {filterOptions.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setStatusFilter(f.key)}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                statusFilter === f.key
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="relative flex gap-4">
         {/* Map */}
-        <div className={`flex-1 overflow-hidden rounded-xl border border-border ${selected ? "h-[calc(100vh-12rem)]" : "h-[calc(100vh-12rem)]"}`}>
+        <div className="flex-1 overflow-hidden rounded-xl border border-border h-[calc(100vh-14rem)]">
           <MapContainer
             center={[50.075, 14.44]}
             zoom={13}
@@ -67,12 +92,12 @@ const LiveMap = () => {
               attribution='&copy; <a href="https://carto.com/">CARTO</a>'
               url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
             />
-            {vehicles.map((v) => (
+            {displayedVehicles.map((v) => (
               <Marker
                 key={v.id}
                 position={[v.lat, v.lng]}
                 icon={createIcon(v.status)}
-                eventHandlers={{ click: () => setSelected(v) }}
+                eventHandlers={{ click: () => selectVehicle(v.id) }}
               >
                 <Popup>
                   <strong>{v.name}</strong>
@@ -84,13 +109,13 @@ const LiveMap = () => {
           </MapContainer>
         </div>
 
-        {/* Detail panel */}
+        {/* Sidebar list + detail panel */}
         {selected && (
           <div className="hidden w-80 shrink-0 rounded-xl border border-border bg-card p-5 lg:block">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold">{selected.name}</h3>
               <button
-                onClick={() => setSelected(null)}
+                onClick={() => selectVehicle(null)}
                 className="text-muted-foreground hover:text-foreground"
               >
                 <X className="h-4 w-4" />
