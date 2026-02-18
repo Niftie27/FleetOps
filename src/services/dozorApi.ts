@@ -1,171 +1,197 @@
-import {
-  vehicles as mockVehicles,
-  trips as mockTrips,
-  events as mockEvents,
-  speedChartData as mockSpeedChart,
-  type Vehicle,
-  type Trip,
-  type FleetEvent,
-} from "@/data/mockData";
+import type { FleetEvent, SpeedPoint, Trip, Vehicle } from "@/types/fleet";
 
-const FUNCTION_NAME = "dozor-proxy";
+type DozorObject = Record<string, unknown>;
 
-/** Tracks whether last fetch used live API or mock fallback */
-let _lastDataSource: "mock" | "live" = "mock";
+const LIVE_DATA_SOURCE = "live" as const;
+let _lastDataSource = LIVE_DATA_SOURCE;
 export const getDataSource = () => _lastDataSource;
 
-async function proxyGet<T>(path: string, params?: Record<string, string>): Promise<T> {
-  const qs = params ? "?" + new URLSearchParams(params).toString() : "";
-  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/${FUNCTION_NAME}${path}${qs}`;
+const API_BASE = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
 
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-      apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-    },
-  });
+async function backendGet<T>(path: string, params?: Record<string, string>): Promise<T> {
+  const qs = params ? `?${new URLSearchParams(params).toString()}` : "";
+  const res = await fetch(`${API_BASE}${path}${qs}`);
 
   if (!res.ok) {
     const body = await res.text();
-    console.error(`dozor-proxy ${path} error [${res.status}]:`, body);
-    throw new Error(`API error ${res.status}`);
+    throw new Error(`Backend error ${res.status}: ${body}`);
   }
-
-  return res.json();
+  _lastDataSource = LIVE_DATA_SOURCE;
+  return res.json() as Promise<T>;
 }
 
-export const isConfigured = () => Boolean(import.meta.env.VITE_SUPABASE_URL);
-
-// ─── Groups ─────────────────────────────────────────────
-export const getGroups = async () => {
-  try {
-    const data = await proxyGet<any[]>("/groups");
-    _lastDataSource = "live";
-    return data;
-  } catch (e) {
-    console.warn("getGroups failed, falling back to mock:", e);
-    _lastDataSource = "mock";
-    return [];
-  }
-};
+export const getGroups = async (): Promise<DozorObject[]> => backendGet("/api/groups");
 
 // ─── Vehicles ───────────────────────────────────────────
-export const getVehicles = async (group?: string): Promise<Vehicle[]> => {
-  if (!group) {
-    _lastDataSource = "mock";
-    return mockVehicles;
-  }
-  try {
-    const raw = await proxyGet<any[]>("/vehicles", { group });
-    _lastDataSource = "live";
-    return raw.map(normalizeVehicle);
-  } catch (e) {
-    console.warn("getVehicles failed, falling back to mock:", e);
-    _lastDataSource = "mock";
-    return mockVehicles;
-  }
+export const getVehicles = async (): Promise<Vehicle[]> => {
+  const groups = await getGroups();
+  const codes = groups
+    .map((g) => str(g.code) || str(g.groupCode) || str(g.id))
+    .filter(Boolean);
+
+  const perGroup = await Promise.all(
+    codes.map((code) => backendGet<DozorObject[]>("/api/vehicles", { group: code }))
+  );
+  return perGroup.flat().map(normalizeVehicle);
 };
 
 // ─── Live positions ─────────────────────────────────────
-export const getLivePositions = async () => {
-  const vehicles = await getVehicles();
-  return vehicles.map((v) => ({
-    vehicleId: v.id,
-    lat: v.lat,
-    lng: v.lng,
-    speedKph: v.speed,
-    status: v.status,
-    timestamp: v.lastUpdate,
-  }));
+export const getVehicle = async (code: string): Promise<Vehicle> => {
+  const raw = await backendGet<DozorObject>(`/api/vehicle/${encodeURIComponent(code)}`);
+  return normalizeVehicle(raw);
 };
 
 // ─── Trip history ───────────────────────────────────────
-export const getTripHistory = async (
-  code?: string,
-  from?: string,
-  to?: string
-): Promise<Trip[]> => {
-  // Without a specific vehicle code, return mock data directly
-  if (!code) {
-    _lastDataSource = "mock";
-    return mockTrips;
+export const getTripHistory = async (code?: string, from?: string, to?: string): Promise<Trip[]> => {
+  if (code) {
+    const rows = await backendGet<DozorObject[]>("/api/trips", compactParams({ code, from, to }));
+    return rows.map(normalizeTrip);
   }
-  // Skip proxy if previous calls already failed (TLS issue)
-  if (_lastDataSource === "mock") {
-    return mockTrips;
-  }
-  try {
-    const params: Record<string, string> = { code };
-    if (from) params.from = from;
-    if (to) params.to = to;
-    const raw = await proxyGet<any[]>("/trips", params);
-    _lastDataSource = "live";
-    return raw.map(normalizeTrip);
-  } catch (e) {
-    console.warn("getTripHistory failed, falling back to mock:", e);
-    _lastDataSource = "mock";
-    return mockTrips;
-  }
+
+  const vehicles = await getVehicles();
+  const codes = vehicles.map((v) => v.code).filter(Boolean);
+  const allTrips = await Promise.all(
+    codes.map((vehicleCode) => backendGet<DozorObject[]>("/api/trips", compactParams({ code: vehicleCode, from, to })))
+  );
+  return allTrips.flat().map(normalizeTrip);
 };
 
 // ─── Events ─────────────────────────────────────────────
-export const getEvents = async (): Promise<FleetEvent[]> => {
-  _lastDataSource = "mock";
-  return mockEvents;
+export const getEvents = async (vehicleCode?: string, from?: string, to?: string): Promise<FleetEvent[]> => {
+  const vehicles = await getVehicles();
+  const codes = vehicleCode ? [vehicleCode] : vehicles.map((v) => v.code).filter(Boolean);
+  if (codes.length === 0) return [];
+
+  const historyRows = await backendGet<DozorObject[]>("/api/history", compactParams({ codes: codes.join(","), from, to }));
+  return historyRows
+    .filter((row) => row.event || row.eventType || row.message)
+    .map((row, idx) => normalizeEvent(row, vehicles, idx));
 };
 
 // ─── Speed chart ────────────────────────────────────────
-export const getSpeedChartData = async () => {
-  _lastDataSource = "mock";
-  return mockSpeedChart;
+export const getSpeedChartData = async (code?: string, from?: string, to?: string): Promise<SpeedPoint[]> => {
+  const trips = await getTripHistory(code, from, to);
+  return buildSpeedChart(trips);
 };
 
 // ─── Normalizers ────────────────────────────────────────
-function normalizeVehicle(raw: any): Vehicle {
+function compactParams(params: Record<string, string | undefined>) {
+  return Object.fromEntries(Object.entries(params).filter(([, v]) => v));
+}
+
+function normalizeVehicle(raw: DozorObject): Vehicle {
+  const code = str(raw.code) || str(raw.id);
   return {
-    id: String(raw.code ?? raw.id ?? ""),
-    name: raw.name ?? raw.title ?? "",
-    plate: raw.plate ?? raw.licensePlate ?? "",
+    id: code,
+    code,
+    name: str(raw.name) || str(raw.title) || `Vehicle ${code}`,
+    plate: str(raw.plate) || str(raw.licensePlate),
+
     status: deriveStatus(raw),
-    speed: Number(raw.speed ?? raw.speedKph ?? 0),
-    lat: Number(raw.lat ?? raw.latitude ?? 0),
-    lng: Number(raw.lng ?? raw.longitude ?? 0),
-    lastUpdate: raw.timestamp ?? raw.lastUpdate ?? new Date().toISOString(),
-    driver: raw.driver ?? "",
-    fuelLevel: Number(raw.fuelLevel ?? raw.fuel ?? 0),
-    ignition: Boolean(raw.ignition ?? raw.acc ?? false),
-    odometer: Number(raw.odometer ?? raw.mileage ?? 0),
+    speed: num(raw.speed) || num(raw.speedKph),
+    lat: num(raw.lat) || num(raw.latitude) || num(raw.gpsLat),
+    lng: num(raw.lng) || num(raw.longitude) || num(raw.gpsLng),
+    lastUpdate: str(raw.timestamp) || str(raw.lastUpdate) || new Date().toISOString(),
+    driver: str(raw.driver) || str(raw.driverName),
+    fuelLevel: num(raw.fuelLevel) || num(raw.fuel),
+    ignition: bool(raw.ignition) || bool(raw.acc),
+    odometer: num(raw.odometer) || num(raw.mileage),
   };
 }
 
-function normalizeTrip(raw: any): Trip {
+function normalizeTrip(raw: DozorObject): Trip {
+  const code = str(raw.vehicleCode) || str(raw.code) || str(raw.vehicleId);
+  const startTime = str(raw.startTime) || str(raw.from);
   return {
-    id: String(raw.id ?? Math.random()),
-    vehicleId: String(raw.vehicleCode ?? raw.vehicleId ?? ""),
-    vehicleName: raw.vehicleName ?? "",
-    startTime: raw.startTime ?? raw.from ?? "",
-    endTime: raw.endTime ?? raw.to ?? "",
-    startLocation: raw.startLocation ?? raw.startAddress ?? "",
-    endLocation: raw.endLocation ?? raw.endAddress ?? "",
-    startLat: Number(raw.startLat ?? raw.startLatitude ?? 0),
-    startLng: Number(raw.startLng ?? raw.startLongitude ?? 0),
-    endLat: Number(raw.endLat ?? raw.endLatitude ?? 0),
-    endLng: Number(raw.endLng ?? raw.endLongitude ?? 0),
-    distance: Number(raw.distanceKm ?? raw.distance ?? 0),
-    duration: Number(raw.durationMin ?? raw.duration ?? 0),
-    maxSpeed: Number(raw.maxSpeedKph ?? raw.maxSpeed ?? 0),
-    avgSpeed: Number(raw.avgSpeedKph ?? raw.avgSpeed ?? 0),
+    id: str(raw.id) || `${code || "trip"}-${startTime || Date.now()}`,
+    vehicleId: code,
+    vehicleName: str(raw.vehicleName) || str(raw.name),
+    startTime,
+    endTime: str(raw.endTime) || str(raw.to),
+    startLocation: str(raw.startLocation) || str(raw.startAddress),
+    endLocation: str(raw.endLocation) || str(raw.endAddress),
+    startLat: num(raw.startLat) || num(raw.startLatitude) || num(raw.fromLat),
+    startLng: num(raw.startLng) || num(raw.startLongitude) || num(raw.fromLng),
+    endLat: num(raw.endLat) || num(raw.endLatitude) || num(raw.toLat),
+    endLng: num(raw.endLng) || num(raw.endLongitude) || num(raw.toLng),
+    distance: num(raw.distanceKm) || num(raw.distance),
+    duration: num(raw.durationMin) || num(raw.duration),
+    maxSpeed: num(raw.maxSpeedKph) || num(raw.maxSpeed),
+    avgSpeed: num(raw.avgSpeedKph) || num(raw.avgSpeed),
   };
 }
 
-function deriveStatus(raw: any): Vehicle["status"] {
-  if (raw.status) {
-    const s = String(raw.status).toLowerCase();
-    if (s === "moving" || s === "drive") return "moving";
-    if (s === "idle" || s === "stop") return "idle";
-    return "offline";
-  }
-  if (Number(raw.speed ?? 0) > 0) return "moving";
-  if (raw.ignition || raw.acc) return "idle";
+function normalizeEvent(raw: DozorObject, vehicles: Vehicle[], idx: number): FleetEvent {
+  const code = str(raw.vehicleCode) || str(raw.code) || str(raw.vehicleId);
+  const vehicle = vehicles.find((v) => v.code === code || v.id === code);
+  return {
+    id: str(raw.id) || `${code}-${idx}`,
+    vehicleId: code,
+    vehicleName: str(raw.vehicleName) || vehicle?.name || code,
+    type: str(raw.eventType) || str(raw.event) || "event",
+    message: str(raw.message) || str(raw.description) || str(raw.eventType) || "Event",
+    timestamp: str(raw.timestamp) || str(raw.time) || new Date().toISOString(),
+    severity: deriveSeverity(raw),
+    lat: num(raw.lat) || num(raw.latitude),
+    lng: num(raw.lng) || num(raw.longitude),
+  };
+}
+
+function normalizeEvent(raw: DozorObject, vehicles: Vehicle[], idx: number): FleetEvent {
+  const code = str(raw.vehicleCode) || str(raw.code) || str(raw.vehicleId);
+  const vehicle = vehicles.find((v) => v.code === code || v.id === code);
+  return {
+    id: str(raw.id) || `${code}-${idx}`,
+    vehicleId: code,
+    vehicleName: str(raw.vehicleName) || vehicle?.name || code,
+    type: str(raw.eventType) || str(raw.event) || "event",
+    message: str(raw.message) || str(raw.description) || str(raw.eventType) || "Event",
+    timestamp: str(raw.timestamp) || str(raw.time) || new Date().toISOString(),
+    severity: deriveSeverity(raw),
+    lat: num(raw.lat) || num(raw.latitude),
+    lng: num(raw.lng) || num(raw.longitude),
+  };
+}
+
+function deriveStatus(raw: DozorObject): Vehicle["status"] {
+  const status = str(raw.status).toLowerCase();
+  if (["moving", "drive", "driving"].includes(status)) return "moving";
+  if (["idle", "stop", "stopped"].includes(status)) return "idle";
+  if (status) return "offline";
+  if (num(raw.speed) > 0) return "moving";
+  if (bool(raw.ignition) || bool(raw.acc)) return "idle";
   return "offline";
+}
+
+function deriveSeverity(raw: DozorObject): FleetEvent["severity"] {
+  const value = (str(raw.severity) || str(raw.level) || str(raw.priority)).toLowerCase();
+  if (["high", "critical", "3"].includes(value)) return "high";
+  if (["medium", "warning", "2"].includes(value)) return "medium";
+  return "low";
+}
+
+function buildSpeedChart(trips: Trip[]): SpeedPoint[] {
+  const byHour = new Map<string, { sum: number; count: number }>();
+  for (const trip of trips) {
+    if (!trip.startTime) continue;
+    const key = new Date(trip.startTime).toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" });
+    const prev = byHour.get(key) ?? { sum: 0, count: 0 };
+    byHour.set(key, { sum: prev.sum + trip.avgSpeed, count: prev.count + 1 });
+  }
+
+  return [...byHour.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([time, agg]) => ({ time, speed: Math.round(agg.sum / agg.count) }));
+}
+
+function str(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
+
+function num(v: unknown): number {
+  return typeof v === "number" ? v : typeof v === "string" ? Number(v) || 0 : 0;
+}
+
+function bool(v: unknown): boolean {
+  return typeof v === "boolean" ? v : v === "true" || v === 1 || v === "1";
 }
