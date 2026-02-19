@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { Car, Activity, PauseCircle, WifiOff, Fuel, SearchX } from "lucide-react";
-import { type VehicleStatus } from "@/data/mockData";
+import { type VehicleStatus } from "@/types/fleet";
 import { useFleetState, useFleetActions } from "@/store/FleetStore";
 import { usePolling } from "@/hooks/usePolling";
 import KPICard from "@/components/KPICard";
@@ -17,6 +17,7 @@ const POLL_INTERVAL = 30_000;
 const Index = () => {
   const { vehicles, statusFilter, searchQuery, loading, error, lastUpdated } = useFleetState();
   const { fetchVehicles, setStatusFilter } = useFleetActions();
+
 
   usePolling(fetchVehicles, POLL_INTERVAL);
 

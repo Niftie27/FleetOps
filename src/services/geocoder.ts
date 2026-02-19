@@ -1,30 +1,21 @@
-// In-memory reverse geocoding with Nominatim + cache
+// Reverse geocoding via backend proxy (Nominatim blocked by CORS from browsers)
 const cache = new Map<string, string>();
 const pending = new Map<string, Promise<string>>();
 
+const API_BASE = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
+
 function cacheKey(lat: number, lng: number): string {
-  return `${lat.toFixed(5)},${lng.toFixed(5)}`;
+  return `${lat.toFixed(4)},${lng.toFixed(4)}`;
 }
 
 async function fetchAddress(lat: number, lng: number): Promise<string> {
-  const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&zoom=16&accept-language=cs`;
-  const res = await fetch(url, {
-    headers: { "User-Agent": "FleetInsights/1.0" },
-  });
-  if (!res.ok) throw new Error(`Nominatim ${res.status}`);
+  const res = await fetch(
+    `${API_BASE}/api/geocode/reverse?lat=${lat}&lng=${lng}`,
+    { signal: AbortSignal.timeout(6000) }
+  );
+  if (!res.ok) throw new Error(`Geocode ${res.status}`);
   const data = await res.json();
-
-  const a = data.address ?? {};
-  const street = a.road ?? a.pedestrian ?? a.neighbourhood ?? "";
-  const houseNumber = a.house_number ?? "";
-  const city =
-    a.city ?? a.town ?? a.village ?? a.municipality ?? a.county ?? "";
-
-  const parts: string[] = [];
-  if (city) parts.push(city);
-  if (street) parts.push(street + (houseNumber ? ` ${houseNumber}` : ""));
-
-  return parts.length > 0 ? parts.join(", ") : data.display_name ?? `${lat}, ${lng}`;
+  return data.address ?? `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
 }
 
 export async function reverseGeocode(lat: number, lng: number): Promise<string> {
@@ -35,7 +26,6 @@ export async function reverseGeocode(lat: number, lng: number): Promise<string> 
   const cached = cache.get(key);
   if (cached) return cached;
 
-  // Deduplicate in-flight requests for the same coords
   const inflight = pending.get(key);
   if (inflight) return inflight;
 

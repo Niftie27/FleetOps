@@ -10,7 +10,7 @@ import {
   type Trip,
   type FleetEvent,
   type VehicleStatus,
-} from "@/data/mockData";
+} from "@/types/fleet";
 import {
   getVehicles,
   getTripHistory,
@@ -36,7 +36,7 @@ export interface FleetState {
   selectedVehicleId: string | null;
   statusFilter: "all" | VehicleStatus;
   searchQuery: string;
-  dataSource: "mock" | "live";
+  dataSource: "live";
 }
 
 const initialState: FleetState = {
@@ -50,7 +50,7 @@ const initialState: FleetState = {
   selectedVehicleId: null,
   statusFilter: "all",
   searchQuery: "",
-  dataSource: "mock",
+  dataSource: "live",
 };
 
 // ─── Actions ────────────────────────────────────────────
@@ -60,11 +60,12 @@ type Action =
   | { type: "SET_TRIPS"; payload: Trip[] }
   | { type: "SET_EVENTS"; payload: FleetEvent[] }
   | { type: "SET_SPEED_CHART"; payload: { time: string; speed: number }[] }
+  | { type: "CLEAR_SPEED_CHART" }
   | { type: "SET_ERROR"; payload: string | null }
   | { type: "SET_SELECTED_VEHICLE"; payload: string | null }
   | { type: "SET_STATUS_FILTER"; payload: "all" | VehicleStatus }
   | { type: "SET_SEARCH_QUERY"; payload: string }
-  | { type: "SET_DATA_SOURCE"; payload: "mock" | "live" };
+  | { type: "SET_DATA_SOURCE"; payload: "live" };
 
 function reducer(state: FleetState, action: Action): FleetState {
   switch (action.type) {
@@ -78,6 +79,8 @@ function reducer(state: FleetState, action: Action): FleetState {
       return { ...state, events: action.payload, lastUpdated: new Date().toISOString() };
     case "SET_SPEED_CHART":
       return { ...state, speedChart: action.payload };
+    case "CLEAR_SPEED_CHART":
+      return { ...state, speedChart: [] };
     case "SET_ERROR":
       return { ...state, error: action.payload };
     case "SET_SELECTED_VEHICLE":
@@ -97,8 +100,8 @@ function reducer(state: FleetState, action: Action): FleetState {
 export interface FleetActions {
   fetchVehicles: () => Promise<void>;
   fetchTrips: (code?: string, from?: string, to?: string) => Promise<void>;
-  fetchEvents: () => Promise<void>;
-  fetchSpeedChart: () => Promise<void>;
+  fetchEvents: (code?: string, from?: string, to?: string) => Promise<void>;
+  fetchSpeedChart: (code?: string, from?: string, to?: string, binHours?: number) => Promise<void>;
   selectVehicle: (id: string | null) => void;
   setStatusFilter: (f: "all" | VehicleStatus) => void;
   setSearchQuery: (q: string) => void;
@@ -121,8 +124,9 @@ export const FleetProvider = ({ children }: { children: ReactNode }) => {
       dispatch({ type: "SET_VEHICLES", payload: data });
       dispatch({ type: "SET_DATA_SOURCE", payload: getDataSource() });
       dispatch({ type: "SET_ERROR", payload: null });
-    } catch (e: any) {
-      dispatch({ type: "SET_ERROR", payload: e.message ?? "Failed to load vehicles" });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Failed to load vehicles";
+      dispatch({ type: "SET_ERROR", payload: message });
     } finally {
       dispatch({ type: "SET_LOADING", key: "vehicles", value: false });
     }
@@ -134,33 +138,39 @@ export const FleetProvider = ({ children }: { children: ReactNode }) => {
       const data = await getTripHistory(code, from, to);
       dispatch({ type: "SET_TRIPS", payload: data });
       dispatch({ type: "SET_DATA_SOURCE", payload: getDataSource() });
-    } catch (e: any) {
-      dispatch({ type: "SET_ERROR", payload: e.message ?? "Failed to load trips" });
+      dispatch({ type: "SET_ERROR", payload: null });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Failed to load trips";
+      dispatch({ type: "SET_ERROR", payload: message });
     } finally {
       dispatch({ type: "SET_LOADING", key: "trips", value: false });
     }
   }, []);
 
-  const fetchEventsAction = useCallback(async () => {
+  const fetchEventsAction = useCallback(async (code?: string, from?: string, to?: string) => {
     dispatch({ type: "SET_LOADING", key: "events", value: true });
     try {
-      const data = await getEvents();
+      const data = await getEvents(code, from, to);
       dispatch({ type: "SET_EVENTS", payload: data });
       dispatch({ type: "SET_DATA_SOURCE", payload: getDataSource() });
-    } catch (e: any) {
-      dispatch({ type: "SET_ERROR", payload: e.message ?? "Failed to load events" });
+      dispatch({ type: "SET_ERROR", payload: null });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Failed to load events";
+      dispatch({ type: "SET_ERROR", payload: message });
     } finally {
       dispatch({ type: "SET_LOADING", key: "events", value: false });
     }
   }, []);
 
-  const fetchSpeedChart = useCallback(async () => {
+  const fetchSpeedChart = useCallback(async (code?: string, from?: string, to?: string, binHours = 1) => {
+    // Clear immediately so stale chart doesn't show while loading
+    dispatch({ type: "CLEAR_SPEED_CHART" });
     dispatch({ type: "SET_LOADING", key: "speedChart", value: true });
     try {
-      const data = await getSpeedChartData();
+      const data = await getSpeedChartData(code, from, to, binHours);
       dispatch({ type: "SET_SPEED_CHART", payload: data });
     } catch {
-      // non-critical
+      // non-critical — chart just stays empty
     } finally {
       dispatch({ type: "SET_LOADING", key: "speedChart", value: false });
     }

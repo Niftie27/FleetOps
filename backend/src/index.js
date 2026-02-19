@@ -19,12 +19,13 @@ app.use((req, _res, next) => {
   const startedAt = Date.now();
   const originalSend = _res.send.bind(_res);
   _res.send = (body) => {
-    const duration = Date.now() - startedAt;
-    console.info(`${req.method} ${req.originalUrl} -> ${_res.statusCode} (${duration}ms)`);
+    console.info(`${req.method} ${req.originalUrl} -> ${_res.statusCode} (${Date.now() - startedAt}ms)`);
     return originalSend(body);
   };
   next();
 });
+
+// ─── GPS Dozor proxy ─────────────────────────────────────
 
 function toDozorUrl(path, query = {}) {
   const base = process.env.DOZOR_BASE_URL;
@@ -40,18 +41,13 @@ function toDozorUrl(path, query = {}) {
 async function dozorFetch(path, query = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
   try {
     const auth = Buffer.from(`${process.env.DOZOR_USER}:${process.env.DOZOR_PASS}`).toString("base64");
     const res = await fetch(toDozorUrl(path, query), {
       method: "GET",
-      headers: {
-        Authorization: `Basic ${auth}`,
-        Accept: "application/json",
-      },
+      headers: { Authorization: `Basic ${auth}`, Accept: "application/json" },
       signal: controller.signal,
     });
-
     const contentType = res.headers.get("content-type") || "";
     const body = contentType.includes("application/json") ? await res.json() : await res.text();
     return { status: res.status, body };
@@ -72,44 +68,103 @@ function passthrough(handler) {
   };
 }
 
-app.get(
-  "/api/groups",
-  passthrough(async () => dozorFetch("/groups"))
-);
+app.get("/api/groups", passthrough(async () => dozorFetch("/groups")));
+app.get("/api/vehicles", passthrough(async (req) =>
+  dozorFetch(`/vehicles/group/${encodeURIComponent(String(req.query.group || ""))}`)
+));
+app.get("/api/vehicle/:code", passthrough(async (req) =>
+  dozorFetch(`/vehicle/${encodeURIComponent(req.params.code)}`)
+));
+app.get("/api/history", passthrough(async (req) =>
+  dozorFetch(`/vehicles/history/${encodeURIComponent(String(req.query.codes || ""))}`, {
+    from: req.query.from,
+    to: req.query.to,
+  })
+));
+app.get("/api/trips", passthrough(async (req) =>
+  dozorFetch(`/vehicle/${encodeURIComponent(String(req.query.code || ""))}/trips`, {
+    from: req.query.from,
+    to: req.query.to,
+  })
+));
 
-app.get(
-  "/api/vehicles",
-  passthrough(async (req) => dozorFetch(`/vehicles/group/${encodeURIComponent(String(req.query.group || ""))}`))
-);
+// ─── Nominatim reverse geocode proxy with rate limiter ───
+// Nominatim policy: max 1 request/second.
+// We queue requests and process one per second.
 
-app.get(
-  "/api/vehicle/:code",
-  passthrough(async (req) => dozorFetch(`/vehicle/${encodeURIComponent(req.params.code)}`))
-);
+const geocodeCache = new Map();
 
-app.get(
-  "/api/history",
-  passthrough(async (req) =>
-    dozorFetch(`/vehicles/history/${encodeURIComponent(String(req.query.codes || ""))}`, {
-      from: req.query.from,
-      to: req.query.to,
+// Simple sequential queue — resolves one Nominatim call per 1100ms
+const nominatimQueue = [];
+let nominatimBusy = false;
+
+function processNominatimQueue() {
+  if (nominatimBusy || nominatimQueue.length === 0) return;
+  nominatimBusy = true;
+  const { lat, lng, resolve } = nominatimQueue.shift();
+
+  const key = `${Number(lat).toFixed(4)},${Number(lng).toFixed(4)}`;
+
+  fetchFromNominatim(lat, lng)
+    .then((address) => {
+      geocodeCache.set(key, address);
+      resolve({ address });
     })
-  )
-);
-
-app.get(
-  "/api/trips",
-  passthrough(async (req) =>
-    dozorFetch(`/vehicle/${encodeURIComponent(String(req.query.code || ""))}/trips`, {
-      from: req.query.from,
-      to: req.query.to,
+    .catch(() => {
+      const fallback = `${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)}`;
+      geocodeCache.set(key, fallback);
+      resolve({ address: fallback, fallback: true });
     })
-  )
-);
+    .finally(() => {
+      // Wait 1100ms before next request to stay within Nominatim policy
+      setTimeout(() => {
+        nominatimBusy = false;
+        processNominatimQueue();
+      }, 1100);
+    });
+}
 
-app.get("/health", (_req, res) => {
-  res.json({ ok: true });
+async function fetchFromNominatim(lat, lng) {
+  const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&zoom=16&accept-language=cs`;
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent": "FleetInsights/1.0 (fleet-dashboard-proxy)",
+      Accept: "application/json",
+    },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw new Error(`Nominatim ${res.status}`);
+  const data = await res.json();
+  const a = data.address ?? {};
+  const street = a.road ?? a.pedestrian ?? a.neighbourhood ?? "";
+  const houseNumber = a.house_number ?? "";
+  const city = a.city ?? a.town ?? a.village ?? a.municipality ?? a.county ?? "";
+  const parts = [];
+  if (city) parts.push(city);
+  if (street) parts.push(street + (houseNumber ? ` ${houseNumber}` : ""));
+  return parts.length > 0 ? parts.join(", ") : data.display_name ?? `${lat}, ${lng}`;
+}
+
+app.get("/api/geocode/reverse", (req, res) => {
+  const { lat, lng } = req.query;
+  if (!lat || !lng) return res.status(400).json({ error: "lat and lng required" });
+
+  const key = `${Number(lat).toFixed(4)},${Number(lng).toFixed(4)}`;
+
+  // Serve from cache immediately
+  if (geocodeCache.has(key)) {
+    return res.json({ address: geocodeCache.get(key), cached: true });
+  }
+
+  // Queue the request — respond when it's processed
+  nominatimQueue.push({
+    lat, lng,
+    resolve: (result) => res.json(result),
+  });
+  processNominatimQueue();
 });
+
+app.get("/health", (_req, res) => res.json({ ok: true, queueLength: nominatimQueue.length }));
 
 app.listen(PORT, () => {
   console.info(`FleetOps backend listening on http://localhost:${PORT}`);
