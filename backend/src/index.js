@@ -68,7 +68,34 @@ function passthrough(handler) {
   };
 }
 
-app.get("/api/groups", passthrough(async () => dozorFetch("/groups")));
+// ─── Trip response cache ─────────────────────────────────────────────────────
+// GPS Dozor rate-limits concurrent trip requests. Cache responses for 5 minutes
+// so: (a) sequential enrichment doesn't re-hit the API on hot reload, and
+// (b) repeat visits to Historie/Události serve instantly from cache.
+
+const tripCache = new Map(); // key → { body, expiresAt }
+const TRIP_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function tripCacheKey(code, from, to) {
+  return `${code}|${from}|${to}`;
+}
+
+async function dozorFetchTrips(code, from, to) {
+  const key = tripCacheKey(code, from, to);
+  const cached = tripCache.get(key);
+  if (cached && Date.now() < cached.expiresAt) {
+    return { status: 200, body: cached.body, fromCache: true };
+  }
+  const result = await dozorFetch(
+    `/vehicle/${encodeURIComponent(code)}/trips`,
+    { from, to }
+  );
+  if (result.status === 200) {
+    tripCache.set(key, { body: result.body, expiresAt: Date.now() + TRIP_CACHE_TTL_MS });
+  }
+  return result;
+}
+
 app.get("/api/vehicles", passthrough(async (req) =>
   dozorFetch(`/vehicles/group/${encodeURIComponent(String(req.query.group || ""))}`)
 ));
@@ -81,11 +108,13 @@ app.get("/api/history", passthrough(async (req) =>
     to: req.query.to,
   })
 ));
+app.get("/api/groups", passthrough(async () => dozorFetch("/groups")));
 app.get("/api/trips", passthrough(async (req) =>
-  dozorFetch(`/vehicle/${encodeURIComponent(String(req.query.code || ""))}/trips`, {
-    from: req.query.from,
-    to: req.query.to,
-  })
+  dozorFetchTrips(
+    String(req.query.code || ""),
+    String(req.query.from || ""),
+    String(req.query.to   || "")
+  )
 ));
 
 // ─── Nominatim reverse geocode proxy with rate limiter ───

@@ -1,61 +1,30 @@
-# ===============================
-# Logs
-# ===============================
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-# ===============================
 # Dependencies
-# ===============================
-node_modules
+node_modules/
 
-# ===============================
-# Build outputs
-# ===============================
-dist
-dist-ssr
-build
-.out
+# Build output
+dist/
+dist-ssr/
 
-# ===============================
-# Environment variables (CRITICAL)
-# ===============================
+# Environment files — NEVER commit real credentials
+# Add a .env.example with placeholder values instead
 .env
 .env.*
 !.env.example
 
-# ===============================
-# Supabase local config
-# ===============================
-supabase/.env
-.supabase
+# Logs
+*.log
+npm-debug.log*
 
-# ===============================
-# OS files
-# ===============================
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.sw?
+
+# OS
 .DS_Store
 Thumbs.db
 
-# ===============================
-# IDE / Editor
-# ===============================
-.vscode/*
-!.vscode/extensions.json
-.idea
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-*.swp
-
-# ===============================
-# Misc
-# ===============================
+# Vite
 *.local
-coverage

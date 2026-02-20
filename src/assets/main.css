@@ -1,0 +1,64 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background:           217 33% 10%;
+    --foreground:           210 40% 98%;
+    --card:                 217 33% 13%;
+    --card-foreground:      210 40% 98%;
+    --border:               217 33% 22%;
+    --input:                217 33% 22%;
+    --primary:              199 89% 48%;
+    --primary-foreground:   217 33% 10%;
+    --secondary:            217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted:                217 33% 17%;
+    --muted-foreground:     215 20% 58%;   /* slightly brighter for readability */
+    --destructive:          0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --ring:                 199 89% 48%;
+    --radius:               0.75rem;
+  }
+
+  /* Global reset */
+  * { @apply border-border; }
+
+  /* Base: 15px for comfortable readability on dashboard screens */
+  html { font-size: 15px; }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Table cells inherit body size by default in browsers — force it */
+  th, td { font-size: inherit; }
+}
+
+/* ── Leaflet dark theme ───────────────────────────────────────── */
+.leaflet-container {
+  background: hsl(var(--background));
+}
+
+.leaflet-popup-content-wrapper {
+  background: hsl(var(--card)) !important;
+  color: hsl(var(--foreground)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6) !important;
+  border-radius: 10px !important;
+}
+
+.leaflet-popup-tip {
+  background: hsl(var(--card)) !important;
+}
+
+.leaflet-popup-close-button {
+  color: hsl(var(--muted-foreground)) !important;
+  font-size: 18px !important;
+}
+
+.leaflet-popup-content {
+  margin: 14px 16px !important;
+}

@@ -1,251 +1,199 @@
-import type { FleetEvent, SpeedPoint, Trip, Vehicle } from "@/types/fleet";
+// ─── GPS Dozor service ────────────────────────────────────────────────────────
+// Responsibility: fetch from GPS Dozor API (via backend proxy) and normalize
+// raw API responses into typed domain objects used by the store.
+//
+// Rules:
+//  - No UI imports, no Pinia, no Vue reactivity
+//  - All data fetching goes through httpGet() — never raw fetch()
+//  - No 'as any' casts — all unknowns handled by typed coercer functions
+//  - null vs undefined distinction respected throughout
 
-type DozorObject = Record<string, unknown>;
+import { httpGet } from "./http";
+import type { FleetEvent, SpeedPoint, Trip, Vehicle, VehicleStatus } from "@/types";
 
-const LIVE_DATA_SOURCE = "live" as const;
-let _lastDataSource = LIVE_DATA_SOURCE;
-export const getDataSource = () => _lastDataSource;
+/** Opaque raw API record — all fields unknown until explicitly extracted */
+type RawRecord = Record<string, unknown>;
 
-const API_BASE = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
+// ─── Groups ───────────────────────────────────────────────────────────────────
 
-// ─── HTTP ────────────────────────────────────────────────
-async function backendGet<T>(path: string, params?: Record<string, string>): Promise<T> {
-  const qs = params ? `?${new URLSearchParams(params).toString()}` : "";
-  const res = await fetch(`${API_BASE}${path}${qs}`);
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Backend error ${res.status}: ${body}`);
-  }
-  _lastDataSource = LIVE_DATA_SOURCE;
-  return res.json() as Promise<T>;
+async function fetchGroupCodes(): Promise<string[]> {
+  const groups = await httpGet<RawRecord[]>("/api/groups");
+  return groups
+    .map((g) => asString(g.Code) || asString(g.code))
+    .filter((code): code is string => code.length > 0);
 }
 
-// ─── Groups ──────────────────────────────────────────────
-export const getGroups = async (): Promise<DozorObject[]> => backendGet("/api/groups");
+// ─── Vehicles ─────────────────────────────────────────────────────────────────
 
-// ─── Vehicles ────────────────────────────────────────────
-export const getVehicles = async (): Promise<Vehicle[]> => {
-  const groups = await getGroups();
-  const codes = groups.map((g) => str(g.Code) || str(g.code)).filter(Boolean);
+export async function fetchVehicles(): Promise<Vehicle[]> {
+  const codes = await fetchGroupCodes();
   if (codes.length === 0) return [];
 
+  // Parallel fetch per group — settled so one failure doesn't block others
   const results = await Promise.allSettled(
-    codes.map((code) => backendGet<DozorObject[]>("/api/vehicles", { group: code }))
+    codes.map((code) => httpGet<RawRecord[]>("/api/vehicles", { group: code }))
   );
 
   return results
-    .filter((r): r is PromiseFulfilledResult<DozorObject[]> => r.status === "fulfilled")
+    .filter((r): r is PromiseFulfilledResult<RawRecord[]> => r.status === "fulfilled")
     .flatMap((r) => r.value.map(normalizeVehicle));
-};
+}
 
-// ─── Single vehicle ───────────────────────────────────────
-export const getVehicle = async (code: string): Promise<Vehicle> => {
-  const raw = await backendGet<DozorObject>(`/api/vehicle/${encodeURIComponent(code)}`);
+export async function fetchVehicleDetail(code: string): Promise<Vehicle> {
+  const raw = await httpGet<RawRecord>(`/api/vehicle/${encodeURIComponent(code)}`);
   return normalizeVehicle(raw);
-};
+}
 
-// ─── Trips ────────────────────────────────────────────────
-// NOTE: GPS Dozor does NOT return VehicleCode inside trip records.
-// vehicleCode is always injected at fetch time.
-export const getTripHistory = async (vehicleCode?: string, from?: string, to?: string): Promise<Trip[]> => {
+// ─── Trips ────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetch trip history for a single vehicle (code provided) or all vehicles.
+ * GPS Dozor does NOT embed VehicleCode inside trip records, so we inject it
+ * during normalization.
+ */
+export async function fetchTrips(
+  vehicleCode: string | undefined,
+  from: string,
+  to: string
+): Promise<Trip[]> {
+  const params = { from, to };
+
   if (vehicleCode) {
-    const rows = await backendGet<DozorObject[]>("/api/trips", compactParams({ code: vehicleCode, from, to }));
+    const rows = await httpGet<RawRecord[]>("/api/trips", { code: vehicleCode, ...params });
     return rows.map((r) => normalizeTrip(r, vehicleCode));
   }
 
-  // All vehicles — fetch in parallel per vehicle
-  const vehicles = await getVehicles();
-  const codes = vehicles.map((v) => v.code).filter(Boolean);
-
+  // All vehicles — fetch in parallel
+  const vehicles = await fetchVehicles();
   const results = await Promise.allSettled(
-    codes.map((code) =>
-      backendGet<DozorObject[]>("/api/trips", compactParams({ code, from, to }))
-        .then((rows) => rows.map((r) => normalizeTrip(r, code)))
+    vehicles.map((v) =>
+      httpGet<RawRecord[]>("/api/trips", { code: v.code, ...params })
+        .then((rows) => rows.map((r) => normalizeTrip(r, v.code)))
     )
   );
 
   return results
     .filter((r): r is PromiseFulfilledResult<Trip[]> => r.status === "fulfilled")
     .flatMap((r) => r.value);
-};
+}
 
-// ─── Events ───────────────────────────────────────────────
-// Derived from trip data. Accepts pre-fetched vehicle codes to avoid
-// calling getVehicles() again (callers pass codes from store).
-export const getEvents = async (
-  vehicleCode?: string,
-  from?: string,
-  to?: string,
+// ─── Events ───────────────────────────────────────────────────────────────────
+
+/**
+ * Derive events from trip data (speeding + long trips).
+ * Accepts pre-fetched vehicle codes from the store to avoid a redundant API call.
+ */
+export async function fetchEvents(
+  vehicleCode: string | undefined,
+  from: string,
+  to: string,
   allVehicleCodes?: string[]
-): Promise<FleetEvent[]> => {
+): Promise<FleetEvent[]> {
   if (vehicleCode) {
-    const rows = await backendGet<DozorObject[]>("/api/trips", compactParams({ code: vehicleCode, from, to }));
-    const trips = rows.map((r) => normalizeTrip(r, vehicleCode));
-    return deriveEventsFromTrips(trips);
+    const rows = await httpGet<RawRecord[]>("/api/trips", { code: vehicleCode, from, to });
+    return deriveEvents(rows.map((r) => normalizeTrip(r, vehicleCode)));
   }
 
-  const codes = allVehicleCodes?.slice(0, 3) ?? [];
+  // Limit to 3 vehicles to avoid hammering the API
+  const codes = (allVehicleCodes ?? []).slice(0, 3);
   if (codes.length === 0) return [];
 
   const results = await Promise.allSettled(
     codes.map((code) =>
-      backendGet<DozorObject[]>("/api/trips", compactParams({ code, from, to }))
+      httpGet<RawRecord[]>("/api/trips", { code, from, to })
         .then((rows) => rows.map((r) => normalizeTrip(r, code)))
     )
   );
-  const allTrips = results
+
+  const trips = results
     .filter((r): r is PromiseFulfilledResult<Trip[]> => r.status === "fulfilled")
     .flatMap((r) => r.value);
-  return deriveEventsFromTrips(allTrips);
-};
 
-// ─── Speed chart ──────────────────────────────────────────
-// Only called for a single vehicle (chart is hidden for "all vehicles").
-export const getSpeedChartData = async (
+  return deriveEvents(trips);
+}
+
+// ─── Speed chart ──────────────────────────────────────────────────────────────
+
+export async function fetchSpeedChart(
   vehicleCode: string | undefined,
-  from?: string,
-  to?: string,
-  binHours = 1
-): Promise<SpeedPoint[]> => {
+  from: string,
+  to: string,
+  binHours: number
+): Promise<SpeedPoint[]> {
   if (!vehicleCode) return [];
-  const trips = await getTripHistory(vehicleCode, from, to);
+  const trips = await fetchTrips(vehicleCode, from, to);
   return buildSpeedChart(trips, binHours);
-};
-
-// ─── Normalizers ─────────────────────────────────────────
-
-function compactParams(params: Record<string, string | undefined>): Record<string, string> {
-  return Object.fromEntries(
-    Object.entries(params).filter((e): e is [string, string] => Boolean(e[1]))
-  );
 }
 
-function normalizeVehicle(raw: DozorObject): Vehicle {
-  const code = str(raw.Code) || str(raw.code);
-  const lastPos = (raw.LastPosition ?? raw.lastPosition) as DozorObject | undefined;
+// ─── Event derivation ─────────────────────────────────────────────────────────
 
-  return {
-    id: code,
-    code,
-    name: str(raw.Name) || str(raw.name) || `Vozidlo ${code}`,
-    plate: str(raw.SPZ) || str(raw.spz) || str(raw.plate),
-    status: deriveVehicleStatus(raw),
-    speed: num(raw.Speed) || num(raw.speed),
-    lat: lastPos ? num(lastPos.Latitude) || num(lastPos.latitude) : 0,
-    lng: lastPos ? num(lastPos.Longitude) || num(lastPos.longitude) : 0,
-    lastUpdate: str(raw.LastPositionTimestamp) || str(raw.lastPositionTimestamp) || new Date().toISOString(),
-    driver: str(raw.DriverName) || str(raw.driverName),
-    fuelLevel: num(raw.BatteryPercentage) || num(raw.fuelLevel),
-    ignition: num(raw.Speed) > 0 || bool(raw.ignition),
-    odometer: Math.round((num(raw.Odometer) || num(raw.odometer)) / 1000),
-  };
-}
-
-function normalizeTrip(raw: DozorObject, vehicleCode: string): Trip {
-  const startTime = str(raw.StartTime) || str(raw.startTime);
-  const startPos = (raw.StartPosition ?? raw.startPosition) as DozorObject | undefined;
-  const finishPos = (raw.FinishPosition ?? raw.finishPosition) as DozorObject | undefined;
-
-  return {
-    id: `${vehicleCode}-${startTime || Date.now()}`,
-    vehicleId: vehicleCode,
-    vehicleName: str(raw.DriverName) || vehicleCode,
-    startTime,
-    endTime: str(raw.FinishTime) || str(raw.endTime),
-    startLocation: str(raw.StartAddress) || str(raw.startAddress),
-    endLocation: str(raw.FinishAddress) || str(raw.finishAddress),
-    startLat: startPos ? num(startPos.Latitude) || num(startPos.latitude) : 0,
-    startLng: startPos ? num(startPos.Longitude) || num(startPos.longitude) : 0,
-    endLat: finishPos ? num(finishPos.Latitude) || num(finishPos.latitude) : 0,
-    endLng: finishPos ? num(finishPos.Longitude) || num(finishPos.longitude) : 0,
-    distance: num(raw.TotalDistance) || num(raw.distanceKm),
-    duration: parseTripLength(str(raw.TripLength)) || num(raw.durationMin),
-    maxSpeed: num(raw.MaxSpeed) || num(raw.maxSpeedKph),
-    avgSpeed: num(raw.AverageSpeed) || num(raw.avgSpeedKph),
-  };
-}
-
-function deriveEventsFromTrips(trips: Trip[]): FleetEvent[] {
+function deriveEvents(trips: Trip[]): FleetEvent[] {
   const events: FleetEvent[] = [];
+
   for (const trip of trips) {
     if (!trip.startTime) continue;
+
     if (trip.maxSpeed > 110) {
       events.push({
-        id: `${trip.vehicleId}-spd-${trip.startTime}`,
-        vehicleId: trip.vehicleId,
-        vehicleName: trip.vehicleName || trip.vehicleId,
-        type: "speeding",
-        message: `Max rychlost ${trip.maxSpeed} km/h — ${trip.startLocation || "neznámá poloha"}`,
-        timestamp: trip.startTime,
-        severity: trip.maxSpeed > 130 ? "high" : "medium",
-        lat: trip.startLat,
-        lng: trip.startLng,
+        id:          `${trip.vehicleId}-spd-${trip.startTime}`,
+        vehicleId:   trip.vehicleId,
+        vehicleName: trip.vehicleName,
+        driver:      trip.driver,
+        type:        "speeding",
+        message:     `Max rychlost ${trip.maxSpeed} km/h — ${trip.startLocation || "neznámá poloha"}`,
+        timestamp:   trip.startTime,
+        severity:    trip.maxSpeed > 130 ? "high" : "medium",
+        lat:         trip.startLat,
+        lng:         trip.startLng,
       });
     }
+
     if (trip.distance > 300) {
       events.push({
-        id: `${trip.vehicleId}-long-${trip.startTime}`,
-        vehicleId: trip.vehicleId,
-        vehicleName: trip.vehicleName || trip.vehicleId,
-        type: "long_trip",
-        message: `Dlouhá jízda: ${trip.distance.toFixed(0)} km (${trip.startLocation || "?"} → ${trip.endLocation || "?"})`,
-        timestamp: trip.startTime,
-        severity: "low",
-        lat: trip.startLat,
-        lng: trip.startLng,
+        id:          `${trip.vehicleId}-long-${trip.startTime}`,
+        vehicleId:   trip.vehicleId,
+        vehicleName: trip.vehicleName,
+        driver:      trip.driver,
+        type:        "long_trip",
+        message:     `Dlouhá jízda: ${trip.distance.toFixed(0)} km (${trip.startLocation || "?"} → ${trip.endLocation || "?"})`,
+        timestamp:   trip.startTime,
+        severity:    "low",
+        lat:         trip.startLat,
+        lng:         trip.startLng,
       });
     }
   }
+
   return events.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 }
 
-// ─── Status ───────────────────────────────────────────────
-function deriveVehicleStatus(raw: DozorObject): Vehicle["status"] {
-  const speed = num(raw.Speed) || num(raw.speed);
-  if (speed > 5) return "moving";
-  const ts = str(raw.LastPositionTimestamp) || str(raw.lastPositionTimestamp);
-  if (ts) {
-    const ageMin = (Date.now() - new Date(ts).getTime()) / 60_000;
-    if (ageMin > 30) return "offline";
-  }
-  return "idle";
-}
+// ─── Speed chart aggregation ──────────────────────────────────────────────────
 
-// ─── Speed chart ──────────────────────────────────────────
-// Groups trip avgSpeed into bins of `binHours` width.
-// ALWAYS emits all bins from 00:00 to 23:00 (or last hour with data).
-// Empty bins get speed=0 so the x-axis stays continuous.
-//
-// Why: If binHours=1 and trips only happened at 07:00, 11:00, 18:00,
-// the chart should still show a full axis (00:00…23:00) not just 3 points.
-// Empty-hour bins show 0 so the shape is readable and the axis makes sense.
+/**
+ * Aggregate per-trip average speeds into time bins spanning 00:00 → last active hour.
+ * Empty bins are filled with speed = 0 so the chart line stays continuous.
+ */
 function buildSpeedChart(trips: Trip[], binHours: number): SpeedPoint[] {
-  const bh = Math.max(1, Math.min(binHours, 12)); // clamp 1–12h
+  const bh = Math.max(1, Math.min(binHours, 12));
+  const bins = new Map<number, { sum: number; count: number }>();
 
-  // Aggregate real data
-  const byBin = new Map<number, { sum: number; count: number }>();
   for (const trip of trips) {
-    if (!trip.startTime || !trip.avgSpeed) continue;
-    const d = new Date(trip.startTime);
-    const binStart = Math.floor(d.getHours() / bh) * bh;
-    const prev = byBin.get(binStart) ?? { sum: 0, count: 0 };
-    byBin.set(binStart, { sum: prev.sum + trip.avgSpeed, count: prev.count + 1 });
+    if (!trip.startTime || trip.avgSpeed === 0) continue;
+    const hour     = new Date(trip.startTime).getHours();
+    const binStart = Math.floor(hour / bh) * bh;
+    const prev     = bins.get(binStart) ?? { sum: 0, count: 0 };
+    bins.set(binStart, { sum: prev.sum + trip.avgSpeed, count: prev.count + 1 });
   }
 
-  if (byBin.size === 0) return [];
+  if (bins.size === 0) return [];
 
-  // Find the last hour that has data so we don't render a huge empty tail
-  const maxHourWithData = Math.max(...byBin.keys());
-  // Round up to next full bin boundary
-  const lastBin = Math.floor(maxHourWithData / bh) * bh;
-
-  // Emit all bins from 00:00 up to lastBin
+  const lastBin = Math.max(...bins.keys());
   const result: SpeedPoint[] = [];
+
   for (let h = 0; h <= lastBin; h += bh) {
-    const entry = byBin.get(h);
-    const label = `${String(h).padStart(2, "0")}:00`;
+    const entry = bins.get(h);
     result.push({
-      time: label,
+      time:  `${String(h).padStart(2, "0")}:00`,
       speed: entry ? Math.round(entry.sum / entry.count) : 0,
     });
   }
@@ -253,25 +201,103 @@ function buildSpeedChart(trips: Trip[], binHours: number): SpeedPoint[] {
   return result;
 }
 
-// ─── TripLength parser ────────────────────────────────────
+// ─── Normalization ────────────────────────────────────────────────────────────
+
+function normalizeVehicle(raw: RawRecord): Vehicle {
+  const code = asString(raw.Code) || asString(raw.code);
+  const pos  = asRecord(raw.LastPosition ?? raw.lastPosition);
+
+  return {
+    id:   code,
+    code,
+    name: asString(raw.Name) || asString(raw.name) || `Vozidlo ${code}`,
+    plate: asString(raw.SPZ) || asString(raw.spz) || asString(raw.plate),
+    status: deriveStatus(raw),
+    speed:  asNumber(raw.Speed) || asNumber(raw.speed),
+    lat:    pos ? asNumber(pos.Latitude)  || asNumber(pos.latitude)  : 0,
+    lng:    pos ? asNumber(pos.Longitude) || asNumber(pos.longitude) : 0,
+    lastUpdate:
+      asString(raw.LastPositionTimestamp) ||
+      asString(raw.lastPositionTimestamp) ||
+      new Date().toISOString(),
+    // GPS Dozor: DriverName is present on some plans / vehicle types
+    driver:    asString(raw.DriverName) || asString(raw.driverName) || null,
+    // Odometer is returned in meters — convert to km
+    odometer:  Math.round((asNumber(raw.Odometer) || asNumber(raw.odometer)) / 1000),
+    fuelLevel: null,  // Not available in GPS Dozor standard plan
+    ignition:  asNumber(raw.Speed) > 0 || asBoolean(raw.ignition),
+  };
+}
+
+function normalizeTrip(raw: RawRecord, vehicleCode: string): Trip {
+  const startTime = asString(raw.StartTime)  || asString(raw.startTime);
+  const startPos  = asRecord(raw.StartPosition  ?? raw.startPosition);
+  const finishPos = asRecord(raw.FinishPosition ?? raw.finishPosition);
+
+  return {
+    id:          `${vehicleCode}-${startTime || String(Date.now())}`,
+    vehicleId:   vehicleCode,
+    // GPS Dozor does not return VehicleName in trip records — set to code,
+    // components resolve the display name from the vehicles list in the store.
+    vehicleName: vehicleCode,
+    // DriverName is present at trip level — shows who drove this specific trip
+    driver:      asString(raw.DriverName) || asString(raw.driverName) || null,
+    startTime,
+    endTime:        asString(raw.FinishTime)    || asString(raw.endTime),
+    startLocation:  asString(raw.StartAddress)  || asString(raw.startAddress),
+    endLocation:    asString(raw.FinishAddress)  || asString(raw.finishAddress),
+    startLat: startPos  ? asNumber(startPos.Latitude)   || asNumber(startPos.latitude)   : 0,
+    startLng: startPos  ? asNumber(startPos.Longitude)  || asNumber(startPos.longitude)  : 0,
+    endLat:   finishPos ? asNumber(finishPos.Latitude)  || asNumber(finishPos.latitude)  : 0,
+    endLng:   finishPos ? asNumber(finishPos.Longitude) || asNumber(finishPos.longitude) : 0,
+    distance: asNumber(raw.TotalDistance) || asNumber(raw.distanceKm),
+    duration: parseTripLength(asString(raw.TripLength)) || asNumber(raw.durationMin),
+    maxSpeed: asNumber(raw.MaxSpeed)      || asNumber(raw.maxSpeedKph),
+    avgSpeed: asNumber(raw.AverageSpeed)  || asNumber(raw.avgSpeedKph),
+  };
+}
+
+function deriveStatus(raw: RawRecord): VehicleStatus {
+  const speed = asNumber(raw.Speed) || asNumber(raw.speed);
+  if (speed > 5) return "moving";
+
+  const ts     = asString(raw.LastPositionTimestamp) || asString(raw.lastPositionTimestamp);
+  const ageMin = ts ? (Date.now() - new Date(ts).getTime()) / 60_000 : Infinity;
+  return ageMin > 30 ? "offline" : "idle";
+}
+
+/**
+ * Parse GPS Dozor TripLength format "HH:MM" or " HH:MM" into minutes.
+ * Returns 0 for any unrecognised format — never throws.
+ */
 function parseTripLength(value: string): number {
   const parts = value.trim().split(":");
   if (parts.length !== 2) return 0;
-  return Number(parts[0]) * 60 + Number(parts[1]);
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  return isNaN(h) || isNaN(m) ? 0 : h * 60 + m;
 }
 
-// ─── Primitive helpers ────────────────────────────────────
-function str(v: unknown): string {
+// ─── Type coercers ────────────────────────────────────────────────────────────
+// Replace 'as any' casts with explicit, null-safe converters.
+
+function asString(v: unknown): string {
   if (v === null || v === undefined) return "";
   return String(v).trim();
 }
 
-function num(v: unknown): number {
-  if (typeof v === "number") return v;
-  if (typeof v === "string") return Number(v) || 0;
+function asNumber(v: unknown): number {
+  if (typeof v === "number") return isNaN(v) ? 0 : v;
+  if (typeof v === "string") { const n = Number(v); return isNaN(n) ? 0 : n; }
   return 0;
 }
 
-function bool(v: unknown): boolean {
+function asBoolean(v: unknown): boolean {
   return v === true || v === "true" || v === 1 || v === "1";
+}
+
+function asRecord(v: unknown): RawRecord | null {
+  return v !== null && typeof v === "object" && !Array.isArray(v)
+    ? (v as RawRecord)
+    : null;
 }
