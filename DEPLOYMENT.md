@@ -7,20 +7,20 @@ Aktuální doporučený deployment:
 
 ## 1. Railway backend
 
-V repu je nově připravený root [`Dockerfile`](./Dockerfile), takže když na Railway vybereš repository `Niftie27/FleetOps`, Railway použije Docker build a nasadí **jen backend** ze složky `backend/`.
+V repu je připravený root [`Dockerfile`](./Dockerfile) a root [`railway.json`](./railway.json), takže když na Railway vybereš repository `Niftie27/FleetOps`, Railway použije Docker build a nasadí **jen backend** ze složky `backend/`.
 
 To znamená:
 
 1. Vyber repository `Niftie27/FleetOps`.
 2. Railway najde root `Dockerfile`.
 3. Do image se zkopíruje jen `backend/package*.json` a `backend/src`.
-4. Spustí se backend přes `npm start`.
+4. Healthcheck poběží na `/health`.
+5. Spustí se backend přes `npm start`.
 
-V [`backend/railway.json`](./backend/railway.json) navíc zůstává Railway config pro případ, že bys přece jen chtěl service vést přes `Root Directory = /backend`:
+Root [`railway.json`](./railway.json) nastavuje:
 
-- `startCommand: npm start`
 - `healthcheckPath: /health`
-- `watchPatterns: /backend/**` pro backend-only redeploye
+- `watchPatterns`, aby backend service redeployoval jen při změnách v `backend/`, `Dockerfile`, `.dockerignore` nebo `railway.json`
 
 Nastav environment variables:
 
@@ -42,12 +42,6 @@ Start command:
 
 ```bash
 npm start
-```
-
-Healthcheck endpoint:
-
-```text
-/health
 ```
 
 Po prvním deployi v Railway ještě otevři `Settings -> Networking` a klikni na `Generate Domain`, aby backend dostal veřejnou URL.

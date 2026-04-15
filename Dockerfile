@@ -9,6 +9,4 @@ RUN npm ci --omit=dev
 
 COPY backend/src ./src
 
-EXPOSE 4000
-
 CMD ["npm", "start"]
