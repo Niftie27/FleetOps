@@ -5,6 +5,10 @@ import cors from "cors";
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
 const TIMEOUT_MS = Number(process.env.DOZOR_TIMEOUT_MS || 15000);
+const corsRules = (process.env.CORS_ORIGIN ?? "*")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
 
 const requiredEnv = ["DOZOR_BASE_URL", "DOZOR_USER", "DOZOR_PASS"];
 const missing = requiredEnv.filter((key) => !process.env[key]);
@@ -12,7 +16,26 @@ if (missing.length > 0) {
   console.warn(`[startup] Missing environment variables: ${missing.join(", ")}`);
 }
 
-app.use(cors({ origin: process.env.CORS_ORIGIN?.split(",") ?? "*" }));
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isAllowedOrigin(origin) {
+  if (!origin) return true;
+  if (corsRules.length === 0 || corsRules.includes("*")) return true;
+
+  return corsRules.some((rule) => {
+    const pattern = `^${escapeRegex(rule).replace(/\\\*/g, ".*")}$`;
+    return new RegExp(pattern).test(origin);
+  });
+}
+
+app.use(cors({
+  origin(origin, callback) {
+    if (isAllowedOrigin(origin)) return callback(null, true);
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
+}));
 app.use(express.json());
 
 app.use((req, _res, next) => {

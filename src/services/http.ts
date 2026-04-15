@@ -1,4 +1,5 @@
-const API_BASE = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:4000";
+const rawApiBase = import.meta.env.VITE_BACKEND_URL?.trim();
+const API_BASE = rawApiBase ? rawApiBase.replace(/\/+$/, "") : "http://localhost:4000";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) {
