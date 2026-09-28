@@ -117,7 +117,10 @@
             <td class="px-5 py-4">
               <div class="flex items-center justify-between gap-4">
                 <div class="min-w-0">
-                  <div class="font-semibold">{{ vehicle.name }}</div>
+                  <div class="flex items-center gap-2">
+                    <span class="font-semibold">{{ vehicle.name }}</span>
+                    <DemoBadge v-if="vehicle.isDemo" />
+                  </div>
                   <div v-if="vehicle.plate" class="text-muted-foreground">{{ vehicle.plate }}</div>
                 </div>
                 <div class="shrink-0" @click.stop>
@@ -154,7 +157,10 @@
             <!-- Drawer header -->
             <div class="flex items-center justify-between border-b border-border px-6 py-5">
               <div>
-                <p class="text-lg font-bold">{{ selected.name }}</p>
+                <p class="flex items-center gap-2 text-lg font-bold">
+                  {{ selected.name }}
+                  <DemoBadge v-if="selected.isDemo" />
+                </p>
                 <p class="text-muted-foreground">{{ selected.plate }}</p>
               </div>
               <button
@@ -247,6 +253,7 @@ import { useFleetStore, type StatusFilter } from '@/store/fleetStore'
 import { usePolling } from '@/composables/usePolling'
 import KPICard        from '@/components/KPICard.vue'
 import StatusBadge    from '@/components/StatusBadge.vue'
+import DemoBadge      from '@/components/DemoBadge.vue'
 import VehicleActions from '@/components/VehicleActions.vue'
 import LoadingState   from '@/components/LoadingState.vue'
 import ErrorState     from '@/components/ErrorState.vue'

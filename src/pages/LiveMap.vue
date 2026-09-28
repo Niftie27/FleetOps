@@ -54,7 +54,10 @@
           <!-- Header: name + close -->
           <div class="flex items-start justify-between gap-2">
             <div class="min-w-0">
-              <h3 class="font-semibold truncate">{{ store.selectedVehicle.name }}</h3>
+              <div class="flex items-center gap-2">
+                <h3 class="font-semibold truncate">{{ store.selectedVehicle.name }}</h3>
+                <DemoBadge v-if="store.selectedVehicle.isDemo" />
+              </div>
               <p v-if="store.selectedVehicle.plate" class="text-muted-foreground">
                 {{ store.selectedVehicle.plate }}
               </p>
@@ -156,6 +159,7 @@ import { useFleetStore, type StatusFilter } from '@/store/fleetStore'
 import { usePolling } from '@/composables/usePolling'
 import { useWeather } from '@/composables/useWeather'
 import StatusBadge    from '@/components/StatusBadge.vue'
+import DemoBadge      from '@/components/DemoBadge.vue'
 import VehicleActions from '@/components/VehicleActions.vue'
 import LoadingState   from '@/components/LoadingState.vue'
 import ErrorState     from '@/components/ErrorState.vue'
@@ -238,7 +242,7 @@ function buildPopupHtml(v: Vehicle): string {
 
   return `
     <div style="min-width:180px;font-family:system-ui,sans-serif;font-size:14px;line-height:1.55;color:#e2e8f0">
-      <div style="font-size:15px;font-weight:700;margin-bottom:2px">${v.name}</div>
+      <div style="font-size:15px;font-weight:700;margin-bottom:2px">${v.name}${v.isDemo ? ` <span style="font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:#fbbf24;background:#f59e0b26;border:1px solid #f59e0b4d;border-radius:9999px;padding:1px 6px;vertical-align:middle">Demo</span>` : ""}</div>
       ${v.plate ? `<div style="font-size:13px;color:#94a3b8;margin-bottom:6px">${v.plate}</div>` : ''}
       <div style="display:flex;align-items:center;gap:5px;margin-bottom:7px">
         <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${color};box-shadow:0 0 6px ${color}99;flex-shrink:0"></span>
@@ -273,9 +277,19 @@ function initMap(): void {
 
   map = L.map(mapEl.value, { zoomControl: false }).setView([50.075, 14.44], 7)
 
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
-    maxZoom: 19,
+  // CARTO's basemaps now require an API key (they serve an "API KEY REQUIRED"
+  // watermark otherwise). Use Esri's Dark Gray Canvas instead — keyless and dark.
+  // Base layer (no labels) + reference overlay (place/road labels), matching the
+  // labelled dark look of the old CARTO dark_all layer.
+  const esriAttribution =
+    'Tiles &copy; <a href="https://www.esri.com/">Esri</a> &mdash; ' +
+    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+    attribution: esriAttribution,
+    maxZoom: 16,
+  }).addTo(map)
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 16,
   }).addTo(map)
 
   L.control.zoom({ position: 'bottomright' }).addTo(map)

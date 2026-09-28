@@ -171,7 +171,10 @@
               <td class="px-5 py-4">
                 <div class="flex items-center justify-between gap-4">
                   <div class="min-w-0">
-                    <div class="font-semibold">{{ vehicleName(trip.vehicleId) }}</div>
+                    <div class="flex items-center gap-2">
+                      <span class="font-semibold">{{ vehicleName(trip.vehicleId) }}</span>
+                      <DemoBadge v-if="isDemoVehicle(trip.vehicleId)" />
+                    </div>
                     <div v-if="trip.driver" class="text-muted-foreground">{{ trip.driver }}</div>
                   </div>
                   <div class="shrink-0" @click.stop>
@@ -228,6 +231,7 @@ import DateRangeFilter from '@/components/DateRangeFilter.vue'
 import VehicleActions  from '@/components/VehicleActions.vue'
 import VehicleDrawer   from '@/components/VehicleDrawer.vue'
 import SpeedChart      from '@/components/SpeedChart.vue'
+import DemoBadge       from '@/components/DemoBadge.vue'
 import LoadingState    from '@/components/LoadingState.vue'
 import ErrorState      from '@/components/ErrorState.vue'
 import EmptyState      from '@/components/EmptyState.vue'
@@ -313,6 +317,16 @@ watch(selectedVehicleId, () => {
   else store.speedChart = []
 })
 
+// Initial load: neither the date nor the vehicle watcher fires on mount with the
+// default range, so a direct visit/refresh of /history would never fetch trips.
+// Mirror Events.vue: load once vehicles are ready, unless trips are already present.
+watch(() => store.vehicles.length, (len) => {
+  if (len === 0 || !isValid.value || store.trips.length > 0) return
+  const code = selectedVehicleId.value || undefined
+  store.loadTrips(code, apiFrom.value, apiTo.value)
+  if (code) store.loadSpeedChart(code, apiFrom.value, apiTo.value, binHours.value)
+}, { immediate: true })
+
 const selectedVehicle = computed(() =>
   store.vehicles.find((v) => v.id === selectedVehicleId.value) ?? null
 )
@@ -394,6 +408,9 @@ function exportCsv(): void {
 
 function vehicleName(id: string): string {
   return store.vehicles.find((v) => v.id === id)?.name ?? id
+}
+function isDemoVehicle(id: string): boolean {
+  return store.vehicles.find((v) => v.id === id)?.isDemo ?? id.startsWith('DEMO-')
 }
 function fmtDate(iso: string): string   { return iso ? new Date(iso).toLocaleString('cs-CZ') : '—' }
 function coordFallback(lat: number, lng: number): string {

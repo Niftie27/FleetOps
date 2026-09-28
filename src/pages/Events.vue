@@ -98,6 +98,7 @@
           <!-- Vehicle name + severity badge + action buttons -->
           <div class="flex flex-wrap items-center gap-2">
             <span class="font-semibold">{{ vehicleName(event.vehicleId) }}</span>
+            <DemoBadge v-if="isDemoVehicle(event.vehicleId)" />
             <span :class="['inline-flex items-center rounded-full px-2.5 py-0.5 font-medium',
               SEVERITY[event.severity].bg, SEVERITY[event.severity].text]">
               {{ SEVERITY[event.severity].label }}
@@ -132,6 +133,7 @@ import { useDateRange } from '@/composables/useDateRange'
 import DateRangeFilter from '@/components/DateRangeFilter.vue'
 import VehicleActions  from '@/components/VehicleActions.vue'
 import VehicleDrawer   from '@/components/VehicleDrawer.vue'
+import DemoBadge       from '@/components/DemoBadge.vue'
 import LoadingState    from '@/components/LoadingState.vue'
 import ErrorState      from '@/components/ErrorState.vue'
 import EmptyState      from '@/components/EmptyState.vue'
@@ -244,6 +246,7 @@ const SEVERITY: Record<EventSeverity, SeverityConfig> = {
 }
 
 function vehicleName(id: string): string { return store.vehicles.find((v) => v.id === id)?.name ?? id }
+function isDemoVehicle(id: string): boolean { return store.vehicles.find((v) => v.id === id)?.isDemo ?? id.startsWith('DEMO-') }
 function fmtDate(iso: string):    string { return iso ? new Date(iso).toLocaleString('cs-CZ') : '—' }
 </script>
 

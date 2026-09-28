@@ -72,6 +72,18 @@
         </div>
       </header>
 
+      <!-- Demo-data banner — visible whenever synthetic vehicles are present -->
+      <div
+        v-if="demoCount > 0"
+        class="flex items-center gap-2 border-b border-amber-500/20 bg-amber-500/10 px-6 py-2 text-xs text-amber-300"
+      >
+        <FlaskConical class="h-3.5 w-3.5 shrink-0" />
+        <span>
+          Zobrazena i <strong class="font-semibold">ukázková DEMO data</strong>
+          ({{ demoCount }} {{ demoCount < 5 ? 'vozidla' : 'vozidel' }}) vedle živého vozidla z GPS Dozoru.
+        </span>
+      </div>
+
       <!-- Page content -->
       <main class="flex-1 overflow-auto p-4 lg:p-6">
         <RouterView />
@@ -81,12 +93,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { Satellite, Search, LayoutDashboard, Map, Clock, AlertTriangle } from 'lucide-vue-next'
+import { ref, computed, watch } from 'vue'
+import { Satellite, Search, LayoutDashboard, Map, Clock, AlertTriangle, FlaskConical } from 'lucide-vue-next'
 import { useFleetStore } from '@/store/fleetStore'
 import FleetWeather from '@/components/FleetWeather.vue'
 
 const store = useFleetStore()
+const demoCount = computed(() => store.vehicles.filter((v) => v.isDemo).length)
 const localQuery = ref(store.searchQuery)
 
 let debounceTimer: ReturnType<typeof setTimeout>

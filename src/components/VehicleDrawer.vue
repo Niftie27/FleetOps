@@ -16,7 +16,10 @@
           <!-- Header -->
           <div class="flex items-center justify-between border-b border-border px-6 py-5">
             <div>
-              <p class="text-lg font-bold">{{ vehicle.name }}</p>
+              <p class="flex items-center gap-2 text-lg font-bold">
+                {{ vehicle.name }}
+                <DemoBadge v-if="vehicle.isDemo" />
+              </p>
               <p class="text-muted-foreground">{{ vehicle.plate }}</p>
             </div>
             <button
@@ -120,6 +123,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { X, Gauge, Zap, Fuel, User, Milestone, MapPin, Clock, LayoutDashboard } from 'lucide-vue-next'
 import StatusBadge    from '@/components/StatusBadge.vue'
+import DemoBadge      from '@/components/DemoBadge.vue'
 import { useFleetStore } from '@/store/fleetStore'
 import VehicleActions from '@/components/VehicleActions.vue'
 import type { Vehicle } from '@/types'

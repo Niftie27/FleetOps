@@ -226,6 +226,8 @@ function normalizeVehicle(raw: RawRecord): Vehicle {
     odometer:  Math.round((asNumber(raw.Odometer) || asNumber(raw.odometer)) / 1000),
     fuelLevel: null,  // Not available in GPS Dozor standard plan
     ignition:  asNumber(raw.Speed) > 0 || asBoolean(raw.ignition),
+    // Synthetic demo vehicles carry a "DEMO-" code prefix (see backend demoData.js)
+    isDemo:    code.startsWith("DEMO-"),
   };
 }
 

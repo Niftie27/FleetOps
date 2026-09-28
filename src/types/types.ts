@@ -25,6 +25,8 @@ export interface Vehicle {
   /** Fuel level 0–100, or null if not available in this API plan */
   fuelLevel:  number | null
   ignition:   boolean
+  /** True for synthetic demo vehicles (DEMO_MODE) — surfaced as a badge in the UI */
+  isDemo:     boolean
 }
 
 export interface Trip {

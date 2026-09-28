@@ -1,10 +1,14 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import { isDemoCode, getDemoVehicles, getDemoVehicleDetail, getDemoTrips } from "./demoData.js";
 
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
 const TIMEOUT_MS = Number(process.env.DOZOR_TIMEOUT_MS || 15000);
+// When true, a synthetic fleet is appended to the real GPS Dozor data so the
+// dashboard demonstrates a full fleet. Real vehicle + upstream calls are unchanged.
+const DEMO_MODE = process.env.DEMO_MODE === "true";
 const corsRules = (process.env.CORS_ORIGIN ?? "*")
   .split(",")
   .map((value) => value.trim())
@@ -119,12 +123,26 @@ async function dozorFetchTrips(code, from, to) {
   return result;
 }
 
-app.get("/api/vehicles", passthrough(async (req) =>
-  dozorFetch(`/vehicles/group/${encodeURIComponent(String(req.query.group || ""))}`)
-));
-app.get("/api/vehicle/:code", passthrough(async (req) =>
-  dozorFetch(`/vehicle/${encodeURIComponent(req.params.code)}`)
-));
+app.get("/api/vehicles", async (req, res) => {
+  const group = String(req.query.group || "");
+  const { status, body } = await dozorFetch(`/vehicles/group/${encodeURIComponent(group)}`);
+  // In demo mode, append the synthetic fleet to group SAGU. If the real call
+  // failed we still surface demo vehicles so the dashboard isn't empty.
+  if (DEMO_MODE && group === "SAGU") {
+    const real = status === 200 && Array.isArray(body) ? body : [];
+    return res.status(200).json([...real, ...getDemoVehicles()]);
+  }
+  return res.status(status).json(body);
+});
+app.get("/api/vehicle/:code", async (req, res) => {
+  const code = req.params.code;
+  if (DEMO_MODE && isDemoCode(code)) {
+    const demo = getDemoVehicleDetail(code);
+    return demo ? res.json(demo) : res.status(404).json({ error: "Unknown demo vehicle" });
+  }
+  const { status, body } = await dozorFetch(`/vehicle/${encodeURIComponent(code)}`);
+  return res.status(status).json(body);
+});
 app.get("/api/history", passthrough(async (req) =>
   dozorFetch(`/vehicles/history/${encodeURIComponent(String(req.query.codes || ""))}`, {
     from: req.query.from,
@@ -132,13 +150,17 @@ app.get("/api/history", passthrough(async (req) =>
   })
 ));
 app.get("/api/groups", passthrough(async () => dozorFetch("/groups")));
-app.get("/api/trips", passthrough(async (req) =>
-  dozorFetchTrips(
-    String(req.query.code || ""),
-    String(req.query.from || ""),
-    String(req.query.to   || "")
-  )
-));
+app.get("/api/trips", async (req, res) => {
+  const code = String(req.query.code || "");
+  const from = String(req.query.from || "");
+  const to   = String(req.query.to   || "");
+  // Demo vehicles never hit the real API — synthesize their trips instead.
+  if (DEMO_MODE && isDemoCode(code)) {
+    return res.json(getDemoTrips(code, from, to));
+  }
+  const { status, body } = await dozorFetchTrips(code, from, to);
+  return res.status(status).json(body);
+});
 
 // ─── Nominatim reverse geocode proxy with rate limiter ───
 // Nominatim policy: max 1 request/second.
